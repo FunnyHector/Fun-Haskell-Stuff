@@ -30,8 +30,3 @@ module Question1 (
   -- helper method. should be private, if that's a thing in Haskell??
   subString :: String -> Int -> Int -> String
   subString str start size = take size $ drop start str
-
-
-
-  ----------
-  ---------
