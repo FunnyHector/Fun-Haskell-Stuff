@@ -33,9 +33,9 @@ subString str start size = take size $ drop start str
 ------------------ question 2 part a ------------------
 
 wrapLines :: Int -> [String] -> [String]
-wrapLines n lynes | n <= 1 = error "N has to be larger than 1"
+wrapLines n lynes | n <= 1    = error "N has to be larger than 1"
                   | otherwise = processWords n str
-                      where str = unwords $ map (unwords . words) lynes
+                                where str = unwords $ map (unwords . words) lynes
 
 processWords :: Int -> String -> [String]
 processWords n str
@@ -60,9 +60,9 @@ takenAndRest n str
 
 justifyLines :: Int -> [String] -> [String]
 justifyLines n lynes = initLines ++ [lastLine]
-                       where initLines = map (processLine n) (take (numLines - 1) wrapedLines);
-                             lastLine  = wrapedLines !! (numLines - 1);
-                             numLines  = length wrapedLines
+                       where initLines   = map (processLine n) (take (numLines - 1) wrapedLines);
+                             lastLine    = wrapedLines !! (numLines - 1);
+                             numLines    = length wrapedLines
                              wrapedLines = wrapLines n lynes
 
 processLine :: Int -> String -> String
