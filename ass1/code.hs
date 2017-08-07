@@ -1,18 +1,34 @@
 import Text.Regex    -- cabal install regex-compat
 import Text.Regex.PCRE    -- cabal install regex-pcre
 import Data.List
+import Data.Char
 
------------------- question 1 part a ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 1 part a  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 lineToWords :: String -> [String]
 lineToWords line = getAllTextMatches $ line =~ "[A-Za-z0-9]+" :: [String]
 
------------------- question 1 part b ------------------
+-- a less elagant way using more basic functions:
+lineToWordsAlt :: String -> [String]
+lineToWordsAlt ""   = []
+lineToWordsAlt line = takeWhile isWantedCha line : (lineToWordsAlt $ dropWhile (not . isWantedCha) $ dropWhile isWantedCha line)
+
+isWantedCha :: Char -> Bool
+isWantedCha cha = (47 < asc && asc < 58) || (64 < asc && asc < 91) || (96 < asc && asc < 123)
+                  where asc = ord cha
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 1 part b  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 linesToWords :: [String] -> [String]
 linesToWords lynes = lineToWords $ unwords lynes
 
------------------- question 1 part c ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 1 part c  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 -- This is not very DRY, however, I don't know how to extract a sigle 'let' or 'where' clause in list comprehension :(.
 posOfWords :: [String] -> [(String, Int, Int)]
@@ -27,15 +43,15 @@ posOfWords lynes =
 subString :: String -> Int -> Int -> String
 subString str start size = take size $ drop start str
 
--------------------------------------------------------
--------------------------------------------------------
-
------------------- question 2 part a ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 2 part a  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 wrapLines :: Int -> [String] -> [String]
-wrapLines n lynes | n <= 1    = error "N has to be larger than 1"
-                  | otherwise = processWords n str
-                                where str = unwords $ map (unwords . words) lynes
+wrapLines n lynes
+  | n <= 1    = error "N has to be larger than 1"
+  | otherwise = processWords n str
+                where str = unwords $ map (unwords . words) lynes
 
 processWords :: Int -> String -> [String]
 processWords n str
@@ -56,45 +72,81 @@ takenAndRest n str
                             taken | str !! n == ' ' = take n str
                                   | otherwise       = reverse $ drop 1 $ dropWhile (/= ' ') (reverse $ take n str)
 
------------------- question 2 part b ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 2 part b  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 justifyLines :: Int -> [String] -> [String]
-justifyLines n lynes = initLines ++ [lastLine]
-                       where initLines   = map (processLine n) (take (numLines - 1) wrapedLines);
-                             lastLine    = wrapedLines !! (numLines - 1);
-                             numLines    = length wrapedLines
-                             wrapedLines = wrapLines n lynes
+justifyLines n lynes
+  = initLines ++ [lastLine]
+    where initLines   = map (processLine n) (take (numLines - 1) wrapedLines);
+          lastLine    = wrapedLines !! (numLines - 1);
+          numLines    = length wrapedLines
+          wrapedLines = wrapLines n lynes
 
 processLine :: Int -> String -> String
 processLine n line = padLeft n $ bloatedLine n line
 
 bloatedLine :: Int -> String -> String
-bloatedLine n str = subRegex (mkRegex " ") str moreSpace
-                    where moreSpace                       = replicate x ' ';
-                          numSpaces                       = str =~ " " :: Int;
-                          availableSpaces                 = n - length str;
-                          x | availableSpaces < numSpaces = 1
-                            | otherwise                   = availableSpaces `div` numSpaces
+bloatedLine n str
+  = subRegex (mkRegex " ") str moreSpace
+    where moreSpace                       = replicate x ' ';
+          numSpaces                       = str =~ " " :: Int;
+          availableSpaces                 = n - length str;
+          x | availableSpaces < numSpaces = 1
+            | otherwise                   = availableSpaces `div` numSpaces
 
 padLeft :: Int -> String -> String
 padLeft n str = whiteSpace ++ str
                 where whiteSpace = replicate (n - length str) ' '
 
--------------------------------------------------------
--------------------------------------------------------
-
---------------------- question 3 ----------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 3 encode  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 encode :: [String] -> ([String], [Int])
+encode lynes = lexiWords $ reverse $ words $ unwords lynes
 
+lexiWords :: [String] -> ([String], [Int])
+lexiWords []       = ([], [])
+lexiWords (wd:wds) = addToLexicon wd (lexiWords wds)
 
+addToLexicon :: String -> ([String], [Int]) -> ([String], [Int])
+addToLexicon wd (wds, indices)
+  | wd `elem` wds = (wds, indices ++ [idx])
+  | otherwise     = (wds ++ [wd], indices ++ [length wds + 1])
+    where idx = indexOf 0 wd wds
+
+indexOf :: Eq a => Int -> a -> [a] -> Int
+indexOf i e es
+  | i >= length es = 0    -- the case that we can't find one. Not possibly used in this assignment
+  | es !! i == e   = i + 1
+  | otherwise      = indexOf (i+1) e es
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+------------------  question 3 decode  ------------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 decode :: ([String], [Int]) -> String
+decode (wordz, indices) = init $ _decode (wordz, indices, 0)
 
+_decode :: ([String], [Int], Int) -> String
+_decode (wordz, indices, pointer)
+  | pointer >= length indices = ""
+  | otherwise                 = word ++ " " ++ _decode (wordz, indices, pointer + 1)
+                                where idx = indices !! pointer
+                                      word = wordz !! (idx - 1)
 
--- For those wanting to write an encode keeps track of new lines, I suggest also having
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+---------------  question 3 encode lines  ---------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+
 encodeLines :: [String] -> ([String], [Int])
 
 
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
+---------------  question 3 decode lines  ---------------
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 decodeLines :: ([String], [Int]) -> [String]
