@@ -13,7 +13,8 @@ lineToWords line = getAllTextMatches $ line =~ "[A-Za-z0-9]+" :: [String]
 -- a less elagant way using more basic functions:
 lineToWordsAlt :: String -> [String]
 lineToWordsAlt ""   = []
-lineToWordsAlt line = takeWhile isWantedCha line : (lineToWordsAlt $ dropWhile (not . isWantedCha) $ dropWhile isWantedCha line)
+lineToWordsAlt line = takeWhile isWantedCha line : lineToWordsAlt rest
+                      where rest = dropWhile (not . isWantedCha) $ dropWhile isWantedCha line
 
 isWantedCha :: Char -> Bool
 isWantedCha cha = (47 < asc && asc < 58) || (64 < asc && asc < 91) || (96 < asc && asc < 123)
@@ -77,7 +78,7 @@ takenAndRest n str
 
 justifyLines :: Int -> [String] -> [String]
 justifyLines n lynes
-  = initLines ++ [lastLine]
+  = initLines ++ [lastLine]    -- seems weird to not justify the last line
     where initLines   = map (processLine n) (take (numLines - 1) wrapedLines);
           lastLine    = wrapedLines !! (numLines - 1);
           numLines    = length wrapedLines
