@@ -30,7 +30,7 @@ linesToWords lynes = lineToWords $ unwords lynes
 ------------------  question 1 part c  ------------------
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
--- This is not very DRY, however, I don't know how to extract a sigle 'let' or 'where' clause in list comprehension :(.
+-- This is not very DRY, however, I don't know how to extract a single 'let' or 'where' clause in list comprehension :(.
 posOfWords :: [String] -> [(String, Int, Int)]
 posOfWords lynes =
  nub [ (word, indexOfLine, indexOfWord) |
@@ -39,7 +39,6 @@ posOfWords lynes =
          indexOfWord <- let line = lynes !! (indexOfLine - 1) in [1..(length line)],
          let line = lynes !! (indexOfLine - 1) in word == subString line (indexOfWord - 1) (length word) ]
 
--- helper method. should be private, if that's a thing in Haskell??
 subString :: String -> Int -> Int -> String
 subString str start size = take size $ drop start str
 
@@ -60,8 +59,8 @@ processWords n str
   | length first < n  = taken : processWords n rest
   | length first == n = take n str : processWords n (drop (n + 1) str)
   | length first > n  = (take (n - 1) first ++ "-") : processWords n (drop (n - 1) str)
-                         where (taken, rest) = takenAndRest n str;
-                               first         = takeWhile (/= ' ') str
+                        where (taken, rest) = takenAndRest n str;
+                              first         = takeWhile (/= ' ') str
 
 takenAndRest :: Int -> String -> (String, String)
 takenAndRest n str
@@ -113,6 +112,7 @@ lexiWords (wd:wds) = addToLexicon wd (lexiWords wds)
 
 addToLexicon :: String -> ([String], [Int]) -> ([String], [Int])
 addToLexicon wd (wds, indices)
+  | wd == "\n"    = (wds, indices ++ [0])    -- this guard clause is for encodeLines
   | wd `elem` wds = (wds, indices ++ [idx])
   | otherwise     = (wds ++ [wd], indices ++ [length wds + 1])
     where idx = indexOf 0 wd wds
@@ -121,7 +121,7 @@ indexOf :: Eq a => Int -> a -> [a] -> Int
 indexOf i e es
   | i >= length es = 0    -- the case that we can't find one. Not possibly used in this assignment
   | es !! i == e   = i + 1
-  | otherwise      = indexOf (i+1) e es
+  | otherwise      = indexOf (i + 1) e es
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ------------------  question 3 decode  ------------------
@@ -142,11 +142,32 @@ _decode (wordz, indices, pointer)
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 encodeLines :: [String] -> ([String], [Int])
+encodeLines lynes = lexiWords $ reverse $ _words $ unwords lynesWithNewLine
+                    where lynesWithNewLine = map (++ " \n") (init lynes) ++ [last lynes]
 
-
+-- this function is like the statndard words, except retaining the newline character '\n'
+_words :: String -> [String]
+_words []     = []
+_words xxs@(x:xs)
+  | x == ' '  = _words xs
+  | otherwise = ys : _words rest
+                where (ys, rest) = break (== ' ') xxs
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ---------------  question 3 decode lines  ---------------
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 
 decodeLines :: ([String], [Int]) -> [String]
+decodeLines (wordz, indices) = _decodeLines (wordz, breakIntoLines indices)
+
+_decodeLines :: ([String], [[Int]]) -> [String]
+_decodeLines (_, [])       = []
+_decodeLines (wordz, i:is) = line : _decodeLines (wordz, is)
+                             where line = unwords $ map (\e -> wordz !! (e - 1)) i
+
+breakIntoLines :: [Int] -> [[Int]]
+breakIntoLines [] = []
+breakIntoLines indices@(idx:rest)
+  | idx == 0      = breakIntoLines rest
+  | otherwise     = fstLine : breakIntoLines restLines
+                    where (fstLine, restLines) = break (== 0) indices
