@@ -172,7 +172,7 @@ Basic idea:
 Question 3 decode:
 
 The idea of decode is rather simple: scan the indices from left to right, and get
-the corresponding word from lexicon, and put them together.
+the corresponding words from lexicon, and put them together.
 
 > decode :: ([String], [Int]) -> String
 > decode (wordz, indices) = init $ _decode (wordz, indices, 0)
