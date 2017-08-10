@@ -92,7 +92,7 @@ bloatedLine n str
   = subRegex (mkRegex " ") str moreSpace
     where moreSpace                       = replicate x ' ';
           numSpaces                       = str =~ " " :: Int;
-          availableSpaces                 = n - length str;
+          availableSpaces                 = n - length str + numSpaces;
           x | availableSpaces < numSpaces = 1
             | otherwise                   = availableSpaces `div` numSpaces
 

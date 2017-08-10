@@ -1,5 +1,5 @@
 Some functions I used in this assignment are not in standard Prelude. It's pointless
-to reinvent wheels. That being said, I did include alternative implementations
+to reinvent wheels. That being said, I did try and include alternative implementations
 (i.e. less elagant ways using more basic functions).
 
 N.B. hackage name for `Text.Regex` is `regex-compat`, and for `Text.Regex.PCRE`
@@ -10,7 +10,9 @@ N.B. hackage name for `Text.Regex` is `regex-compat`, and for `Text.Regex.PCRE`
 > import Data.List
 > import Data.Char
 
-Question 1 part a:
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 1 part a
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 A one line solution using regex matching:
 
@@ -29,14 +31,52 @@ number for checking if it's wanted char. Here is another implementation:
 > isWantedCha cha = (47 < asc && asc < 58) || (64 < asc && asc < 91) || (96 < asc && asc < 123)
 >                   where asc = ord cha
 
-Question 1 part b:
+To run the test functions for question 1 part a, simply run `t1a`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here, which are simply testing whether
+`lineToWords` will pick only words formated as "[A-Za-z0-9]+":
+
+> t1a :: Bool
+> t1a = all (== True) [t1a1, t1a2, t1a3]
+>
+> t1a1 :: Bool
+> t1a1 = lineToWords "this is a test" == ["this", "is", "a", "test"]
+> t1a2 :: Bool
+> t1a2 = lineToWords "For example, this sentence has 7 words!" == ["For","example","this","sentence","has","7","words"]
+> t1a3 :: Bool
+> t1a3 = lineToWords "!@#$ da^^^^funk!!!!Yay----- .....____....." == ["da", "funk", "Yay"]
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 1 part b
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 The solution uses the function `lineToWords` defined in part a:
 
 > linesToWords :: [String] -> [String]
 > linesToWords lynes = lineToWords $ unwords lynes
 
-Question 1 part c:
+To run the test functions for question 1 part b, simply run `t1b`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here, which are quite similar to those
+from `t1a`. They only differ in input types:
+
+> t1b :: Bool
+> t1b = all (== True) [t1b1, t1b2, t1b3]
+>
+> t1b1 :: Bool
+> t1b1 = linesToWords ["this", "is", "a", "test"] == ["this", "is", "a", "test"]
+> t1b2 :: Bool
+> t1b2 = linesToWords ["For example,", "in this sentence,", "there are 9 words."] == ["For","example","in","this","sentence","there","are","9","words"]
+> t1b3 :: Bool
+> t1b3 = linesToWords ["!@#$ da^^^^funk!!", "!!Yay----- .....____....."] == ["da", "funk", "Yay"]
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 1 part c
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 This solution is not very DRY. There are lots of repetition in the list comprehension.
 I don't know how to extract variables into a single 'let' or 'where' clause in list
@@ -54,7 +94,37 @@ this question is not an ideal approach, so again :(
 > subString :: String -> Int -> Int -> String
 > subString str start size = take size $ drop start str
 
-Question 2 part a:
+To run the test functions for question 1 part c, simply run `t1c`. It contains
+several test functions, and should return `False` because `t1c2` can't pass. If
+run `t1c1`, `t1c2`, and `t1c3` seperately, `t1c1` and `t1c3` should pass.
+
+Since `posOfWords` does not ignore punctuation characters or whitespaces when
+counting positions, so I added extra non-word characters and whitespaces to make
+more challenge. From the test result, non-word characters and whitespaces can be
+treated correctly.
+
+Also I added repeating words to check if `posOfWords` could preserve the order
+of them. Sadly test `t1c2` fails, which means `posOfWords` can't preserve the
+order of repeating words (however this is not explicitly required :P)
+
+The definition of test functions are listed here:
+
+> t1c :: Bool
+> t1c = all (== True) [t1c1, t1c2, t1c3]
+>
+> t1c1 :: Bool
+> t1c1 = posOfWords ["    this", "   is     a", "test"]
+>          == [("this",1,5),("is",2,4),("a",2,11),("test",3,1)]
+> t1c2 :: Bool
+> t1c2 = posOfWords ["    For example example, example!", "    in this in sentence in,", "there are 9 words."]
+>          == [("For",1,5),("example",1,9),("example",1,17),("example",1,26),("in",2,5),("this",2,8),("in",2,13),("sentence",2,16),("in",2,25),("there",3,1),("are",3,7),("9",3,11),("words",3,13)]
+> t1c3 :: Bool
+> t1c3 = posOfWords ["!@#$ da^^^^funk!!", "!!Yay----- .....____....."]
+>          == [("da",1,6),("funk",1,12),("Yay",2,3)]
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 2 part a
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 The basic idea here is:
 
@@ -106,7 +176,54 @@ The basic idea here is:
 >                             taken | str !! n == ' ' = take n str
 >                                   | otherwise       = reverse $ drop 1 $ dropWhile (/= ' ') (reverse $ take n str)
 
-Question 2 part b:
+To run the test functions for question 2 part a, simply run `t2a`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+I also manually tested error-raising case when N <= 1 as I dont know yet how to
+test the exception to be thrown as expected. These tests passed.
+
+The definition of test functions are listed here. `t2a1` was taken from tutorial,
+`t2a2` was to test the edge case where N == 2, and `t2a3` is using solely '#'
+character to match every scenario described in the handout as it makes the output
+easy to compare and count the number of.
+
+> t2a :: Bool
+> t2a = all (== True) [t2a1, t2a2, t2a3]
+>
+> t2a1 :: Bool
+> t2a1 = wrapLines 11 [
+>          "    1234567890        For 12345678901        ",
+>          "     example, in this     ",
+>          "sentence, there are 9 words.",
+>          "Though we have yet to try the maximization",
+>          "of this example!"
+>        ] == [
+>          "1234567890",
+>          "For",
+>          "12345678901",
+>          "example, in",
+>          "this",
+>          "sentence,",
+>          "there are 9",
+>          "words.",
+>          "Though we",
+>          "have yet to",
+>          "try the",
+>          "maximizati-",
+>          "on of this",
+>          "example!"
+>        ]
+> t2a2 :: Bool
+> t2a2 = wrapLines 2 ["For example,", "in. this."]
+>          == ["F-","or","e-","x-","a-","m-","p-","l-","e,","i-","n.","t-","h-","i-","s."]
+> t2a3 :: Bool
+> t2a3 = wrapLines 4 ["#","#","##","#","##","##","####","#####","########"]
+>          == ["# #","## #","##","##","####","###-","##","###-","###-","##"]
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 2 part b
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 The basic idea:
 1) Use the function `wrapLines` from question 2 part a to get the output from
@@ -131,7 +248,7 @@ The basic idea:
 >   = subRegex (mkRegex " ") str moreSpace
 >     where moreSpace                       = replicate x ' ';
 >           numSpaces                       = str =~ " " :: Int;
->           availableSpaces                 = n - length str;
+>           availableSpaces                 = n - length str  + numSpaces;
 >           x | availableSpaces < numSpaces = 1
 >             | otherwise                   = availableSpaces `div` numSpaces
 >
@@ -139,10 +256,48 @@ The basic idea:
 > padLeft n str = whiteSpace ++ str
 >                 where whiteSpace = replicate (n - length str) ' '
 
-Question 3 encode:
+To run the test functions for question 2 part b, simply run `t2b`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here.
+
+> t2b :: Bool
+> t2b = all (== True) [t2b1, t2b2]
+>
+> t2b1 :: Bool
+> t2b1 = justifyLines 11 [
+>          "    1234567890        For 12345678901        ",
+>          "     example, in this     ",
+>          "sentence, there are 9 words.",
+>          "Though we have yet to try the maximization",
+>          "of this example!"
+>        ] == [
+>          " 1234567890",
+>          "        For",
+>          "12345678901",
+>          "example, in",
+>          "       this",
+>          "  sentence,",
+>          "there are 9",
+>          "     words.",
+>          "Though   we",
+>          "have yet to",
+>          "try     the",
+>          "maximizati-",
+>          " on of this",
+>          "example!"
+>        ]
+> t2b2 :: Bool
+> t2b2 = justifyLines 4 ["#","#","##","#","##","##","####","#####","########"]
+>          == ["#  #","## #","  ##","  ##","####","###-","  ##","###-","###-","##"]
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 3 encode
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 Basic idea:
-1) Break the input into a list of words
+1) Break the input into a list of words (whitspacce not preserved)
 2) For each word (in reversed order):
    - If it's in the lexicon, then append the index of it to the end of the list
      of indices.
@@ -169,7 +324,26 @@ Basic idea:
 >   | es !! i == e   = i + 1
 >   | otherwise      = indexOf (i + 1) e es
 
-Question 3 decode:
+To run the test functions for question 3 encode, simply run `t3a`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here.
+
+> t3a :: Bool
+> t3a = all (== True) [t3a1, t3a2, t3a3]
+>
+> t3a1 :: Bool
+> t3a1 = encode ["The more I learn, the more I know.","The more I know, the more I forget."]
+>          == (["The","more","I","learn,","the","know.","know,","forget."],[1,2,3,4,5,2,3,6,1,2,3,7,5,2,3,8])
+> t3a2 :: Bool
+> t3a2 = encode ["     "] == ([],[])
+> t3a3 :: Bool
+> t3a3 = encode ["haskel haskel haskel haskel haskel"] == (["haskel"],[1,1,1,1,1])
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+                Question 3 decode
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 The idea of decode is rather simple: scan the indices from left to right, and get
 the corresponding words from lexicon, and put them together.
@@ -184,7 +358,26 @@ the corresponding words from lexicon, and put them together.
 >                                 where idx = indices !! pointer
 >                                       word = wordz !! (idx - 1)
 
-Question 3 encode lines:
+To run the test functions for question 3 encode, simply run `t3b`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here.
+
+> t3b :: Bool
+> t3b = all (== True) [t3b1, t3b2, t3b3]
+>
+> t3b1 :: Bool
+> t3b1 = decode (["The","more","I","learn,","the","know.","know,","forget."],[1,2,3,4,5,2,3,6,1,2,3,7,5,2,3,8])
+>          == "The more I learn, the more I know. The more I know, the more I forget."
+> t3b2 :: Bool
+> t3b2 = decode (["haskel"],[1,1,1,1,1]) == "haskel haskel haskel haskel haskel"
+> t3b3 :: Bool
+> t3b3 = decode ([" "], [1,1,1]) == "     "
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+             Question 3 encode lines
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 For `encodeLines`, the implementation is extended from `encode`. The differences
 exist in 1. the preprocessing part, where each line is appended with a new line
@@ -206,7 +399,24 @@ function except that it treats the new line character as a word.
 >   | otherwise = ys : _words rest
 >                 where (ys, rest) = break (== ' ') xxs
 
-Question 3 decode lines:
+To run the test functions for question 3 encode lines, simply run `t3c`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here.
+
+> t3c :: Bool
+> t3c = all (== True) [t3c1, t3c2]
+>
+> t3c1 :: Bool
+> t3c1 = encodeLines ["The more I learn, the more I know.","The more I know, the more I forget."]
+>          == (["The","more","I","learn,","the","know.","know,","forget."],[1,2,3,4,5,2,3,6,0,1,2,3,7,5,2,3,8])
+> t3c2 :: Bool
+> t3c2 = encodeLines ["# #","## #","##","##","####","###-","##","###-","###-","##"] == (["#","##","####","###-"],[1,1,0,2,1,0,2,0,2,0,3,0,4,0,2,0,4,0,4,0,2])
+
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
+             Question 3 decode lines
+-- + -- + -- + -- + -- + -- + -- + -- + -- + -- +
 
 Basic idea:
 1) Break the list of indices from where the index is 0.
@@ -228,3 +438,21 @@ Basic idea:
 >   | idx == 0      = breakIntoLines rest
 >   | otherwise     = fstLine : breakIntoLines restLines
 >                     where (fstLine, restLines) = break (== 0) indices
+
+To run the test functions for question 3 decode lines, simply run `t3d`. It contains
+several test functions, and should return `True` indicating that all test cases
+passed.
+
+The definition of test functions are listed here.
+
+> t3d :: Bool
+> t3d = all (== True) [t3d1, t3d2]
+>
+> t3d1 :: Bool
+> t3d1 = (decodeLines lexi == lynes) && (decodeLines (encodeLines lynes) == lynes)
+>          where lexi = (["The","more","I","learn,","the","know.","know,","forget."],[1,2,3,4,5,2,3,6,0,1,2,3,7,5,2,3,8]);
+>                lynes = ["The more I learn, the more I know.","The more I know, the more I forget."]
+> t3d2 :: Bool
+> t3d2 = (decodeLines lexi == lynes) && (decodeLines (encodeLines lynes) == lynes)
+>          where lexi = (["#","##","####","###-"],[1,1,0,2,1,0,2,0,2,0,3,0,4,0,2,0,4,0,4,0,2]);
+>                lynes = ["# #","## #","##","##","####","###-","##","###-","###-","##"]
