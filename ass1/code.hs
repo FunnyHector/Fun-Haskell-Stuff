@@ -1,7 +1,6 @@
 import Text.Regex    -- cabal install regex-compat
 import Text.Regex.PCRE    -- cabal install regex-pcre
 import Data.List
-import Data.Char
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ------------------  question 1 part a  ------------------
@@ -17,8 +16,7 @@ lineToWordsAlt line = takeWhile isWantedCha line : lineToWordsAlt rest
                       where rest = dropWhile (not . isWantedCha) $ dropWhile isWantedCha line
 
 isWantedCha :: Char -> Bool
-isWantedCha cha = (47 < asc && asc < 58) || (64 < asc && asc < 91) || (96 < asc && asc < 123)
-                  where asc = ord cha
+isWantedCha cha = cha `elem` (['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'])
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ------------------  question 1 part b  ------------------
@@ -51,7 +49,7 @@ wrapLines :: Int -> [String] -> [String]
 wrapLines n lynes
   | n <= 1    = error "N has to be larger than 1"
   | otherwise = processWords n str
-                where str = unwords $ map (unwords . words) lynes
+  where str = unwords $ map (unwords . words) lynes
 
 processWords :: Int -> String -> [String]
 processWords n str
@@ -60,17 +58,17 @@ processWords n str
   | length first < n  = taken : processWords n rest
   | length first == n = take n str : processWords n (drop (n + 1) str)
   | length first > n  = (take (n - 1) first ++ "-") : processWords n (drop (n - 1) str)
-                        where (taken, rest) = takenAndRest n str;
-                              first         = takeWhile (/= ' ') str
+  where (taken, rest) = takenAndRest n str;
+        first         = takeWhile (/= ' ') str
 
 takenAndRest :: Int -> String -> (String, String)
 takenAndRest n str
   | n <= 1          = error "N has to be larger than 1"
   | length str <= n = (str, "")
   | length str > n  = (taken, rest)
-                      where rest  = drop (1 + length taken) str;
-                            taken | str !! n == ' ' = take n str
-                                  | otherwise       = reverse $ drop 1 $ dropWhile (/= ' ') (reverse $ take n str)
+  where rest                    = drop (1 + length taken) str;
+        taken | str !! n == ' ' = take n str
+              | otherwise       = reverse $ drop 1 $ dropWhile (/= ' ') (reverse $ take n str)
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ------------------  question 2 part b  ------------------
@@ -116,7 +114,7 @@ addToLexicon wd (wds, indices)
   | wd == "\n"    = (wds, indices ++ [0])    -- this guard clause is for encodeLines
   | wd `elem` wds = (wds, indices ++ [idx])
   | otherwise     = (wds ++ [wd], indices ++ [length wds + 1])
-    where idx = indexOf 0 wd wds
+  where idx = indexOf 0 wd wds
 
 indexOf :: Eq a => Int -> a -> [a] -> Int
 indexOf i e es
@@ -135,8 +133,8 @@ _decode :: ([String], [Int], Int) -> String
 _decode (wordz, indices, pointer)
   | pointer >= length indices = ""
   | otherwise                 = word ++ " " ++ _decode (wordz, indices, pointer + 1)
-                                where idx = indices !! pointer
-                                      word = wordz !! (idx - 1)
+  where idx  = indices !! pointer
+        word = wordz !! (idx - 1)
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ---------------  question 3 encode lines  ---------------
@@ -152,7 +150,7 @@ _words []     = []
 _words xxs@(x:xs)
   | x == ' '  = _words xs
   | otherwise = ys : _words rest
-                where (ys, rest) = break (== ' ') xxs
+  where (ys, rest) = break (== ' ') xxs
 
 -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + -- + --
 ---------------  question 3 decode lines  ---------------
@@ -171,4 +169,4 @@ breakIntoLines [] = []
 breakIntoLines indices@(idx:rest)
   | idx == 0      = breakIntoLines rest
   | otherwise     = fstLine : breakIntoLines restLines
-                    where (fstLine, restLines) = break (== 0) indices
+  where (fstLine, restLines) = break (== 0) indices
