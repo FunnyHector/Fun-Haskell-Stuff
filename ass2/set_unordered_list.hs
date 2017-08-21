@@ -19,8 +19,7 @@ module Set (
   mapSet,
   partition,
   foldSet
-  )
-where
+) where
 
 {---------------------------------------------
                Type declaration
@@ -121,6 +120,8 @@ partition :: (a -> Bool) -> Set a -> (Set a,Set a)
 partition f (Set xs) = (Set $ filter f xs, Set $ filter (not . f) xs)
 
 -- | Fold the elements in the set using the given binary operator
+--   N.B. internally this is applying `foldr` on the unordered list, so the given
+--   function should be (\element, identity -> element `f` identity)
 foldSet :: (Eq a, Eq b) => (a -> b -> b) -> b -> Set a -> b
 foldSet f identity (Set xs) = foldr f identity xs
 
