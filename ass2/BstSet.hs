@@ -1,5 +1,5 @@
 -- Represented using binary search tree
-module Set (
+module BstSet (
   Set,   -- no data constructor exported. Have to make a Set using function `makeSet`.
   makeSet,
   has,
