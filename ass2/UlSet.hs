@@ -142,6 +142,6 @@ intersectList xs ys = foldr (\e result -> if e `elem` xs && e `elem` ys then e:r
 notEquals :: Eq a => Set a -> Set a -> Bool
 notEquals (Set xs) (Set ys) = any (`notElem` ys) xs || any (`notElem` xs) ys
 
--- | Returns an empty set
+-- | Return an empty set
 emptySet :: Set a
 emptySet = Set []

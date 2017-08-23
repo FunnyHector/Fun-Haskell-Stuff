@@ -102,7 +102,7 @@ difference set (Set [])          = set
 difference (Set []) _            = emptySet
 difference set@(Set xs) (Set ys) = select (\x -> x `elem` xs && x `notElem` ys) set
 
--- | Convert the set to a list. No order guaranteed.
+-- | Convert the set to an ordered list.
 toList :: Set a -> [a]
 toList = orderedList
 
@@ -143,7 +143,7 @@ quicksort []     = []
 quicksort (p:xs) = quicksort lesser ++ [p] ++ quicksort greater
   where (lesser, greater) = (filter (< p) xs, filter (>= p) xs)
 
--- | Test whether a Set contains a given element using binary search.
+-- | Test whether a list contains a given element using binary search.
 --   N.B. the given list has to be sorted, otherwise the result is chaotic.
 binarySearch :: Ord a => a -> [a] -> Bool
 binarySearch _ [] = False
@@ -158,6 +158,6 @@ binarySearch x xs
 intersectList :: Ord a => [a] -> [a] -> [a]
 intersectList xs ys = foldr (\e result -> if e `elem` xs && e `elem` ys then e:result else result) [] ys
 
--- | Returns an empty set
+-- | Return an empty set
 emptySet :: Set a
 emptySet = Set []
