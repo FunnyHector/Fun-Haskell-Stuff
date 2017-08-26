@@ -16,6 +16,8 @@ module OlSet (
   select,
 
 -- Additional functions:
+  emptySet,
+  orderedList,
   difference,
   toList,
   isEmpty,
@@ -95,6 +97,10 @@ select f (Set xs) = Set (filter f xs)
         (not required in the handout)
 ---------------------------------------------}
 
+-- | Return an empty set
+emptySet :: Set a
+emptySet = Set []
+
 -- | Form the difference of two sets, i.e. the set of elements that occur only in
 --   the first set but not in the second set.
 difference :: Ord a => Set a -> Set a -> Set a
@@ -157,7 +163,3 @@ binarySearch x xs
 -- | Intersect two lists
 intersectList :: Ord a => [a] -> [a] -> [a]
 intersectList xs ys = foldr (\e result -> if e `elem` xs && e `elem` ys then e:result else result) [] ys
-
--- | Return an empty set
-emptySet :: Set a
-emptySet = Set []
