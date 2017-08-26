@@ -8,19 +8,24 @@ module Graph (
   successors,
   isConnected,
   findPath,
-  -- findPathLabel,
-  -- findMinCostPath,
+  findPathLabel,
+  findMinCostPath,
   -- findPathWithLabel,
 
 -- Additional functions:
-  -- mst
+  -- mst,
+  isReachable,
+  predecessorArcs,
+  successorArcs
 ) where
 
--- a note, for testing in console.
--- let s = makeGraph ("abcdefg", [('a',2,'b'),('b',2,'d'),('a',4,'g'),('b',3,'c'),('c',3,'d'),('c',5,'e'),('g',6,'c'),('c',5,'f'),('f',5,'e'),('c',6,'a')])
+-- for testing in console.
+-- let s = makeGraph ("abcdefg", [('a',2,'b'),('b',2,'d'),('a',4,'g'),('b',3,'c'),('c',3,'d'),('c',5,'e'),('g',6,'c'),('c',5,'f'),('f',5,'e'),('c',6,'a'),('e',5,'e'),('a',4,'b'),('a',6,'b')])
 
 import OlSet as Set
 import Data.Maybe
+import Data.List
+import Data.Ord
 
 {---------------------------------------------
                Type declaration
@@ -31,13 +36,6 @@ type Arc a b = (a, b, a)
 type Graph a b = (Set a, Set (Arc a b))
 
 type Path a b = [Arc a b]
-
--- An internal structure to store information needed in path finding algorithm
-data DijkstraState a b =
-  DijkstraState {
-    visitedArcs :: Set (Arc a b),
-    cost         :: b
-  }
 
 {---------------------------------------------
                 API Functions
@@ -84,33 +82,40 @@ findPath (vs,as) origin dest
   | not $ has dest vs   = Nothing
   | origin == dest      = Just []  -- this guard feels questionable, Just [] or Nothing???
   | otherwise           = maybeHead $ allPaths (orderedList as) [origin] origin dest
+  where maybeHead lst
+          | null lst  = Nothing
+          | otherwise = Just (head lst)
 
--- -- | Find the label on a path from one given vertex to another, if there is one.
--- --   The label on a path is the list of labels on the Arcs in the path. If there
--- --   is more than one path from u to v, then findPathLabel g u v (may return the label on any one of them.)
--- --   TODO: update the description in brackets to make it definitive
--- findPathLabel :: Graph a b -> a -> a -> Maybe [b]
+-- | Find the label on a path from one given vertex to another, if there is one.
+--   The label on a path is the list of labels on the Arcs in the path. If there
+--   is more than one path from u to v, then findPathLabel g u v  will search by
+--   order of arcs (triples), e.g. ('a',1,'b') will be searched before ('a',1,'c')
+findPathLabel :: (Ord a, Eq b) => Graph a b -> a -> a -> Maybe [b]
+findPathLabel graph origin dest = f $ findPath graph origin dest
+  where f Nothing   = Nothing
+        f (Just ls) = Just (map label ls)
 
+-- | Find a path with minimal cost from one given vertex to another, if there is
+--   one. If there is more than one path from u to v, with minimal cost then
+--   findMinCostPath g u v (may return any one of them.)
+--   TODO: update the description in brackets to make it definitive
+findMinCostPath :: (Ord a, Num b, Ord b ,Eq b) => Graph a b -> a -> a -> Maybe (Path a b)
+findMinCostPath (vs,as) origin dest
+  | not $ has origin vs = Nothing
+  | not $ has dest vs   = Nothing
+  | origin == dest      = Just []  -- this guard feels questionable, Just [] or Nothing???
+  | otherwise           = findMin $ allPaths (orderedList as) [origin] origin dest
+  where findMin paths
+          | null paths = Nothing
+          | otherwise  = Just (minimumBy (comparing totalCost) paths)
+          where totalCost = sum . map (\(_,c,_) -> c)
 
-
-
-
--- -- | Find a path with minimal cost from one given vertex to another, if there is
--- --   one. If there is more than one path from u to v, with minimal cost then
--- --   findMinCostPath g u v (may return any one of them.)
--- --   TODO: update the description in brackets to make it definitive
--- findMinCostPath :: Graph a b -> a -> a -> Maybe Path a b
-
-
-
-
-
--- -- | Find a path starting from a given vertex with a given label. If there is
--- --   more than one path starting from u with label s, then findPathWithLabel g u s
--- --   (may return any one of them.)
--- --   TODO: update the description in brackets to make it definitive
+-- | Find a path starting from a given vertex with a given label. If there is
+--   more than one path starting from u with label s, then findPathWithLabel g u s
+--   (may return any one of them.)
+--   TODO: update the description in brackets to make it definitive
 -- findPathWithLabel :: Graph a b -> a -> [b] -> Maybe Path a b
-
+-- findPathWithLabel (vs,as) vertex label
 
 
 
@@ -120,10 +125,10 @@ findPath (vs,as) origin dest
             Additional functions
 ---------------------------------------------}
 
--- -- | Construct a minimal cost spanning tree for a given graph, where Tree a b is
--- --   a type consisting of trees with vertices of type a and labels of type b on
--- --   its Arcs.
--- --   TODO: This function is using (Prim's / Kruskal's) algorithm
+-- | Construct a minimal cost spanning tree for a given graph, where Tree a b is
+--   a type consisting of trees with vertices of type a and labels of type b on
+--   its Arcs.
+--   TODO: This function is using (Prim's / Kruskal's) algorithm
 -- mst :: Graph a b -> Tree a b
 
 
@@ -132,6 +137,17 @@ findPath (vs,as) origin dest
 isReachable :: Eq a => Graph a b -> a -> Bool
 isReachable (_, as) v = any (\(m,_,n) -> m == v || n == v) (orderedList as)
 
+-- | Return the set of predecessor Arcs of a vertex, i.e. the set of all Arcs
+--   who goes into the given vertex.
+predecessorArcs :: (Ord a, Ord b) => Graph a b -> a -> Set (Arc a b)
+predecessorArcs (_, as) v = makeSet $ foldr f [] (orderedList as)
+    where f e@(_,_,n) result = if n == v then e : result else result
+
+-- | Return the set of successors Arcs of a vertex, i.e. the set of all Arcs
+--   who comes out of the given vertex.
+successorArcs :: (Ord a, Ord b) => Graph a b -> a -> Set (Arc a b)
+successorArcs (_, as) v = makeSet $ foldr f [] (orderedList as)
+    where f e@(m,_,_) result = if m == v then e : result else result
 
 {---------------------------------------------
                Internal functions
@@ -152,41 +168,13 @@ allPaths arcs visitedVetices origin dest
                    let visitedVetices' = end arc : visitedVetices,
                    path <- allPaths arcs' visitedVetices' origin' dest ]
 
-
--- | Test whether a list contains a given element using binary search.
---   N.B. the given list has to be sorted, otherwise the result is chaotic.
--- binarySearch :: Ord a => a -> [a] -> Bool
--- binarySearch _ [] = False
--- binarySearch x xs
---   | x == xs !! mid = True
---   | x <  xs !! mid = binarySearch x left
---   | otherwise      = binarySearch x right
---   where mid           = length xs `div` 2
---         (left, right) = (take mid xs, drop (mid + 1) xs)
-
--- | Quick sort. From https://wiki.haskell.org/Introduction#Quicksort_in_Haskell
--- quicksort :: Ord a => [a] -> [a]
--- quicksort []     = []
--- quicksort (p:xs) = quicksort lesser ++ [p] ++ quicksort greater
---   where (lesser, greater) = (filter (< p) xs, filter (>= p) xs)
-
+-- | Given a list of vertices, and a list of arcs, check whether there is any
+--   arc that has either end not belonging to the list of vertices.
 hasUnseenVertex :: (Ord a, Ord b) => [a] -> [Arc a b] -> Bool
-hasUnseenVertex _ []                       = False
+hasUnseenVertex _ []                 = False
 hasUnseenVertex vs ((m,_,e):as)
   | m `notElem` vs || e `notElem` vs = True
-  | otherwise                              = hasUnseenVertex vs as
-
--- | Return the set of predecessor Arcs of a vertex, i.e. the set of all Arcs
---   who goes into the given vertex.
-predecessorArcs :: (Ord a, Ord b) => Graph a b -> a -> Set (Arc a b)
-predecessorArcs (_, as) v = makeSet $ foldr f [] (orderedList as)
-    where f e@(_,_,n) result = if n == v then e : result else result
-
--- | Return the set of successors Arcs of a vertex, i.e. the set of all Arcs
---   who comes out of the given vertex.
-successorArcs :: (Ord a, Ord b) => Graph a b -> a -> Set (Arc a b)
-successorArcs (_, as) v = makeSet $ foldr f [] (orderedList as)
-    where f e@(m,_,_) result = if m == v then e : result else result
+  | otherwise                        = hasUnseenVertex vs as
 
 -- | Getter method. Return the start of the given Arc.
 start :: Arc a b -> a
@@ -199,12 +187,3 @@ end (_,_,v) = v
 -- | Getter method. Return the label of the given Arc.
 label :: Arc a b -> b
 label (_,c,_) = c
-
--- | Return an initial fringe for searching with Dijkstra algorithm
-initialState :: (Ord a, Ord b, Num b) => DijkstraState a b
-initialState = DijkstraState emptySet 0
-
--- | An Maybe version of head. If the list is not empty, return the head of it,
---   otherwise return Nothing.
-maybeHead :: [a] -> Maybe a
-maybeHead lst = if null lst then Nothing else Just (head lst)
