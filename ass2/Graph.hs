@@ -10,7 +10,7 @@ module Graph (
   findPath,
   findPathLabel,
   findMinCostPath,
-  -- findPathWithLabel,
+  findPathWithLabel,
 
 -- Additional functions:
   -- mst,
@@ -22,10 +22,10 @@ module Graph (
 -- for testing in console.
 -- let s = makeGraph ("abcdefg", [('a',2,'b'),('b',2,'d'),('a',4,'g'),('b',3,'c'),('c',3,'d'),('c',5,'e'),('g',6,'c'),('c',5,'f'),('f',5,'e'),('c',6,'a'),('e',5,'e'),('a',4,'b'),('a',6,'b')])
 
-import OlSet as Set
-import Data.Maybe
-import Data.List
-import Data.Ord
+import OlSet as Set (Set, card, makeSet, orderedList, has)
+import Data.Maybe (isJust)
+import Data.List (minimumBy, find)
+import Data.Ord (comparing)
 
 {---------------------------------------------
                Type declaration
@@ -46,10 +46,10 @@ type Path a b = [Arc a b]
 --   vertices, or if there are repeated vertices or Arcs.
 makeGraph :: (Ord a, Ord b) => ([a], [Arc a b]) -> Graph a b
 makeGraph (vs, as)
-  | length vs > card vsSet        = error "Repeated vertices!"
-  | length as > card asSet        = error "Repeated Arcs!"
-  | hasUnseenVertex vsList asList = error "Found vertex not in the given list of vertices!"
-  | otherwise                     = (vsSet, asSet)
+  | length vs > card vsSet         = error "Repeated vertices!"
+  | length as > card asSet         = error "Repeated Arcs!"
+  | hasUnknownVertex vsList asList = error "Found vertex not in the given list of vertices!"
+  | otherwise                      = (vsSet, asSet)
   where vsSet  = makeSet vs
         asSet  = makeSet as
         vsList = orderedList vsSet
@@ -97,8 +97,8 @@ findPathLabel graph origin dest = f $ findPath graph origin dest
 
 -- | Find a path with minimal cost from one given vertex to another, if there is
 --   one. If there is more than one path from u to v, with minimal cost then
---   findMinCostPath g u v (may return any one of them.)
---   TODO: update the description in brackets to make it definitive
+--   findMinCostPath g u v will search by order of arcs (triples), e.g. ('a',1,'b')
+--   will be searched before ('a',1,'c')
 findMinCostPath :: (Ord a, Num b, Ord b ,Eq b) => Graph a b -> a -> a -> Maybe (Path a b)
 findMinCostPath (vs,as) origin dest
   | not $ has origin vs = Nothing
@@ -110,16 +110,15 @@ findMinCostPath (vs,as) origin dest
           | otherwise  = Just (minimumBy (comparing totalCost) paths)
           where totalCost = sum . map (\(_,c,_) -> c)
 
--- | Find a path starting from a given vertex with a given label. If there is
+-- | Find a path starting from a given vertex with a given label(s). If there is
 --   more than one path starting from u with label s, then findPathWithLabel g u s
---   (may return any one of them.)
---   TODO: update the description in brackets to make it definitive
--- findPathWithLabel :: Graph a b -> a -> [b] -> Maybe Path a b
--- findPathWithLabel (vs,as) vertex label
-
-
-
-
+--   will search by order of arcs (triples), e.g. ('a',1,'b') will be searched
+--   before ('a',1,'c')
+findPathWithLabel :: (Ord a, Ord b) => Graph a b -> a -> [b] -> Maybe (Path a b)
+findPathWithLabel (vs,as) vertex labels
+  | not $ has vertex vs                     = Nothing
+  | hasUnknownlabel (orderedList as) labels = Nothing
+  | otherwise                               = find (hasLabels labels) (dfs (orderedList as) [] vertex)
 
 {---------------------------------------------
             Additional functions
@@ -130,8 +129,6 @@ findMinCostPath (vs,as) origin dest
 --   its Arcs.
 --   TODO: This function is using (Prim's / Kruskal's) algorithm
 -- mst :: Graph a b -> Tree a b
-
-
 
 -- | Check if a vertex is reachable from a graph
 isReachable :: Eq a => Graph a b -> a -> Bool
@@ -168,13 +165,41 @@ allPaths arcs visitedVetices origin dest
                    let visitedVetices' = end arc : visitedVetices,
                    path <- allPaths arcs' visitedVetices' origin' dest ]
 
+-- | a Depth-first search to find all paths from the given vertex.
+dfs :: (Ord a, Eq b) => [Arc a b] -> [a] -> a -> [Path a b]
+dfs arcs visitedVetices origin
+  | noAvailableArcs = [[]]
+  | otherwise
+      = [ arc:path | arc <- arcs,
+                     start arc == origin,
+                     let origin' = end arc,
+                     let arcs' = [ arc' | arc' <- arcs, arc' /= arc ],
+                     let visitedVetices' = end arc : visitedVetices,
+                     path <- dfs arcs' visitedVetices' origin' ]
+   where noAvailableArcs = all (\(m,_,_) -> m /= origin) arcs
+
 -- | Given a list of vertices, and a list of arcs, check whether there is any
 --   arc that has either end not belonging to the list of vertices.
-hasUnseenVertex :: (Ord a, Ord b) => [a] -> [Arc a b] -> Bool
-hasUnseenVertex _ []                 = False
-hasUnseenVertex vs ((m,_,e):as)
+hasUnknownVertex :: (Ord a, Ord b) => [a] -> [Arc a b] -> Bool
+hasUnknownVertex _ []                = False
+hasUnknownVertex vs ((m,_,e):as)
   | m `notElem` vs || e `notElem` vs = True
-  | otherwise                        = hasUnseenVertex vs as
+  | otherwise                        = hasUnknownVertex vs as
+
+-- | Given a list of arcs, and a list of labels, check whether there is any
+--   label that does not belong to any known arc.
+hasUnknownlabel :: (Ord a, Ord b) => [Arc a b] -> [b] -> Bool
+hasUnknownlabel _ []  = False
+hasUnknownlabel as ls = any (`notElem` knownLabels) ls
+  where knownLabels = map (\(_,l,_) -> l) as
+
+-- | Check a path has the given labels in correct order.
+hasLabels :: (Ord a, Ord b) => [b] -> [Arc a b] -> Bool
+hasLabels [] _ = True
+hasLabels _ [] = False
+hasLabels x@(l:ls) ((_,k,_):as)
+  | l == k    = hasLabels ls as
+  | otherwise = hasLabels x as
 
 -- | Getter method. Return the start of the given Arc.
 start :: Arc a b -> a
