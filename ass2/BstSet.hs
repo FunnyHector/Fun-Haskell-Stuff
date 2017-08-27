@@ -14,6 +14,7 @@ module BstSet (
   select',
 
 -- Additional functions:
+  emptySet,
   difference,
   toSortedList,
   toInOrderList,
@@ -129,6 +130,10 @@ select' f (Branch x l r)
             Additional functions
         (not required in the handout)
 ---------------------------------------------}
+
+-- | Return an empty set
+emptySet :: Set a
+emptySet = Null
 
 -- | Form the difference of two sets, i.e. the set of elements that occur only in
 --   the first set but not in the second set.

@@ -1,7 +1,4 @@
-{- Represented using ordered list.
-   Most functions in this Set module are same from the Set backed by unordered list.
-   Notable differences are: binary search in this module, and the type constraint
-   being `Ord a` instead of `Eq a` added on most functions. -}
+-- Represented using ordered list
 module OlSet (
   Set,   -- no data constructor exported. Have to make a Set using function `makeSet`.
   makeSet,
@@ -81,7 +78,7 @@ intersect (Set xs) (Set ys) = Set (orderedUniqueList $ intersectList xs ys)
 -- | Determine whether two sets are equal, i.e. whether every element that occurs
 --   in either of the sets also occurs in the other.
 equals :: Ord a => Set a -> Set a -> Bool
-equals setA setB = subset setA setB && subset setB setA
+equals setA setB = orderedList setA == orderedList setB
 
 -- | Determine whether one set is contained in another, i.e. whether every element
 --   that occurs in the first set also occurs in the second.
@@ -104,9 +101,9 @@ emptySet = Set []
 -- | Form the difference of two sets, i.e. the set of elements that occur only in
 --   the first set but not in the second set.
 difference :: Ord a => Set a -> Set a -> Set a
-difference set (Set [])          = set
-difference (Set []) _            = emptySet
-difference set@(Set xs) (Set ys) = select (\x -> x `elem` xs && x `notElem` ys) set
+difference set (Set [])      = set
+difference (Set []) _        = emptySet
+difference (Set xs) (Set ys) = Set (filter (`notElem` ys) xs)
 
 -- | Convert the set to an ordered list.
 toList :: Set a -> [a]

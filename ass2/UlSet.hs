@@ -13,6 +13,7 @@ module UlSet (
   select,
 
 -- Additional functions:
+  emptySet,
   difference,
   toList,
   isEmpty,
@@ -92,16 +93,20 @@ select f (Set xs) = Set (filter f xs)
         (not required in the handout)
 ---------------------------------------------}
 
+-- | Return an empty set
+emptySet :: Set a
+emptySet = Set []
+
 -- | Form the difference of two sets, i.e. the set of elements that occur only in
 --   the first set but not in the second set.
 difference :: Eq a => Set a -> Set a -> Set a
-difference set (Set [])          = set
-difference (Set []) _            = emptySet
-difference set@(Set xs) (Set ys) = select (\x -> x `elem` xs && x `notElem` ys) set
+difference set (Set [])      = set
+difference (Set []) _        = emptySet
+difference (Set xs) (Set ys) = Set (filter (`notElem` ys) xs)
 
 -- | Convert the set to a list. No order guaranteed.
 toList :: Set a -> [a]
-toList = unorderedList
+toList = unorderedList  -- Lovin' record syntax!
 
 -- | Determine whether the set is empty
 isEmpty :: Set a -> Bool
@@ -129,7 +134,8 @@ foldSet f identity (Set xs) = foldr f identity xs
                Internal functions
 ---------------------------------------------}
 
--- | Make a list that only contains unique elements from a given list. Same as Data.List.nub.
+-- | Make a list that only contains unique elements from a given list. Same as
+--   Data.List.nub.
 uniqueList :: Eq a => [a] -> [a]
 uniqueList = foldr (\e result -> if e `elem` result then result else e:result) []
 
@@ -141,7 +147,3 @@ intersectList xs ys = foldr (\e result -> if e `elem` xs && e `elem` ys then e:r
 --   I think this approach would be faster than `not . equals`, no?
 notEquals :: Eq a => Set a -> Set a -> Bool
 notEquals (Set xs) (Set ys) = any (`notElem` ys) xs || any (`notElem` xs) ys
-
--- | Return an empty set
-emptySet :: Set a
-emptySet = Set []
