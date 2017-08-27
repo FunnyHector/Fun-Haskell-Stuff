@@ -324,7 +324,7 @@ Test cases for `predecessors`:
 > test_predecessors :: Bool
 > test_predecessors = all (==True) [t1, t2, t3]
 >   where t1 = predecessors graf 'c' == makeSet "bg"
->         t2 = predecessors graf 'd' == emptySet
+>         t2 = predecessors graf 'd' == makeSet "bc"
 >         t3 = predecessors graf 'e' == makeSet "ecf"
 
 Test cases for `successors`:
@@ -332,8 +332,8 @@ Test cases for `successors`:
 > test_successors :: Bool
 > test_successors = all (==True) [t1, t2, t3]
 >   where t1 = successors graf 'c' == makeSet "adef"
->         t2 = successors graf 'b' == makeSet "a"
->         t3 = successors graf 'f' == makeSet "c"
+>         t2 = successors graf 'b' == makeSet "cd"
+>         t3 = successors graf 'f' == makeSet "e"
 
 Test cases for `isConnected`:
 
