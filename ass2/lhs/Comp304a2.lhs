@@ -1,6 +1,6 @@
 (PS: This file may look weird because I first submitted Silly Sort and Graph in
 different files as two separate modules, but put them together after saw the new
-submission requirement. Sorry :P)
+submission requirement. Sorry if it hurts :P)
 
 -----------------------------------------------------
                   Silly Sort Discussion
