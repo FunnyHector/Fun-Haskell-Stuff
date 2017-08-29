@@ -28,13 +28,13 @@ of not allowing duplicates, I decide to hide the constructors from exporting, so
 that to construct a Set one has to use the function `makeSet` instead of directly
 call the constructor. (See "Smart constructors": wiki.haskell.org/Smart_constructors)
 
-5. Notable differences between OlSet (Set backed by ordered list) and UlSet (Set
+5. Notable differences between OLSet (Set backed by ordered list) and ULSet (Set
 backed by unordered list)
 -- Most functions in these two Set modules are quite similar. But I've taken advantage
-of ordered list in OlSet by doing binary search wherever I need to search through
-the list. In theory OlSet should be faster to query, but slower to modify.
-Another difference is that in OlSet I use `Ord a` as the type constraint for lots
-of functions while in UlSet I use `Eq a`. This is to enable the elements to be
+of ordered list in OLSet by doing binary search wherever I need to search through
+the list. In theory OLSet should be faster to query, but slower to modify.
+Another difference is that in OLSet I use `Ord a` as the type constraint for lots
+of functions while in ULSet I use `Eq a`. This is to enable the elements to be
 sorted and hence maintain ordered.
 
 -----------------------------------------------------
@@ -42,7 +42,7 @@ sorted and hence maintain ordered.
 -----------------------------------------------------
 
 > -- Represented using unordered list
-> module UlSet (
+> module ULSet (
 >   Set,   -- no data constructor exported. Have to make a Set using function `makeSet`.
 >   makeSet,
 >   has,
@@ -168,7 +168,7 @@ This function remains questionable because theoretically:
   if setA == setB
   then toList setA == toList setB
 This should be enforced especially in functional programming language. But we
-can't guarantee this, because in UlSet module, Set is backed by unordered list,
+can't guarantee this, because in ULSet module, Set is backed by unordered list,
 and setA == setB can't guarantee that the backing lists have same order.
 
 > -- | Convert the set to a list. No order guaranteed.
@@ -208,7 +208,7 @@ But I made this function anyway. What it does is apply `foldr` to the internal
 list.
 N.B. This function has the same problem as `toList` does. See discussion in `toList`.
 On the other hand, the `foldSet` function can guarantee the deterministic result
-in OlSet, simply because OlSet is backed by ordered list.
+in OLSet, simply because OLSet is backed by ordered list.
 
 > -- | Fold the elements in the set using the given binary operator
 > --   N.B. internally this is applying `foldr` on the unordered list, so the given
@@ -245,7 +245,7 @@ list.
         (Same test cases in three Set Modules)
 -----------------------------------------------------
 
-Given that UlSet, OlSet, and BstSet should behave exactly same externally, I used
+Given that ULSet, OLSet, and BSTSet should behave exactly same externally, I used
 a same suite of test cases on all of them.
 
 One test to test them all!

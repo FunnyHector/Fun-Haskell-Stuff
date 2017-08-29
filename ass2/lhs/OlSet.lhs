@@ -1,11 +1,11 @@
-(Please see UlSet for some general discussion.)
+(Please see ULSet for some general discussion.)
 
 -----------------------------------------------------
                     Module APIs
 -----------------------------------------------------
 
 > -- Represented using ordered list
-> module OlSet (
+> module OLSet (
 >   Set,   -- no data constructor exported. Have to make a Set using function `makeSet`.
 >   makeSet,
 >   has,
@@ -172,9 +172,9 @@ So what `mapSet` function does is:
 > partition f (Set xs) = (Set $ filter f xs, Set $ filter (not . f) xs)
 
 foldSet:
-Since OlSet is backed by ordered list, to fold the set is just to fold the internal
+Since OLSet is backed by ordered list, to fold the set is just to fold the internal
 list. Note this function is using `foldr` on the list.
-(See also the discussion of `foldSet` in UlSet module)
+(See also the discussion of `foldSet` in ULSet module)
 
 > -- | Fold the elements in the set using the given binary operator.
 > --   N.B. internally this is applying `foldr` on the ordered list, so the given
@@ -228,7 +228,7 @@ search?
         (Same test cases in three Set Modules)
 -----------------------------------------------------
 
-Given that UlSet, OlSet, and BstSet should behave exactly same externally, I used
+Given that ULSet, OLSet, and BSTSet should behave exactly same externally, I used
 a same suite of test cases on all of them.
 
 One test to test them all!

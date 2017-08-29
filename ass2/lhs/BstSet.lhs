@@ -1,11 +1,11 @@
-(Please see UlSet for some general discussion.)
+(Please see ULSet for some general discussion.)
 
 -----------------------------------------------------
                     Module APIs
 -----------------------------------------------------
 
 > -- Represented using binary search tree
-> module BstSet (
+> module BSTSet (
 >   Set,   -- no data constructor exported. Have to make a Set using function `makeSet`.
 >   makeSet,
 >   has,
@@ -309,7 +309,7 @@ a given tree.
         (Same test cases in three Set Modules)
 -----------------------------------------------------
 
-Given that UlSet, OlSet, and BstSet should behave exactly same externally, I used
+Given that ULSet, OLSet, and BSTSet should behave exactly same externally, I used
 a same suite of test cases on all of them.
 
 One test to test them all!
