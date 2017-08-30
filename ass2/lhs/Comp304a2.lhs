@@ -1,3 +1,8 @@
+Name:              Fang Zhao (300364061)
+Course Number:     COMP304
+Assignment Number: 2
+Question Number:   2 & 3
+
 (PS: This file may look weird because I first submitted Silly Sort and Graph in
 different files as two separate modules, but put them together after saw the new
 submission requirement. Sorry if it hurts :P)
@@ -132,6 +137,7 @@ One test to test them all!
 > theTest1 = all (== True) [test_asc, test_perms, test_sort]
 
 Test cases for `asc`:
+Covers positive and negative paths.
 
 > test_asc :: Bool
 > test_asc = all (==True) [t1, t2, t3, t4, t5]
@@ -142,11 +148,14 @@ Test cases for `asc`:
 >         t5 = not $ asc [4,2,1]
 
 Test cases for `perms`:
+Covers the direct expectation of this function. I used `Data.List.sort` to help
+lining all permutations up in order.
 
 > test_perms :: Bool
 > test_perms = Data.List.sort (perms "abc") == Data.List.sort ["abc","acb", "bac","bca","cab","cba"]
 
 Test cases for `sort`:
+Tests on different types.
 
 > test_sort :: Bool
 > test_sort = all (==True) [t1, t2, t3]
@@ -434,6 +443,9 @@ One test to test them all!
 > theTest2 = all (== True) [test_predecessors, test_successors, test_isConnected, test_findPath, test_findPathLabel, test_findMinCostPath]
 
 Test cases for `predecessors`:
+Tests on several typical vertices in the graph. Note that 'e' is a special case
+because there is a self-pointing arc ('e',5,'e') in the graph, which means 'e' is
+both predecessor and successor of itself.
 
 > test_predecessors :: Bool
 > test_predecessors = all (==True) [t1, t2, t3]
@@ -442,6 +454,9 @@ Test cases for `predecessors`:
 >         t3 = predecessors graf 'e' == makeSet "ecf"
 
 Test cases for `successors`:
+Tests on several typical vertices in the graph. Note that 'e' is a special case
+because there is a self-pointing arc ('e',5,'e') in the graph, which means 'e' is
+both predecessor and successor of itself.
 
 > test_successors :: Bool
 > test_successors = all (==True) [t1, t2, t3]
@@ -450,6 +465,7 @@ Test cases for `successors`:
 >         t3 = successors graf 'f' == makeSet "e"
 
 Test cases for `isConnected`:
+Covers both positive and negative paths.
 
 > test_isConnected :: Bool
 > test_isConnected = all (==True) [t1, t2, t3, t4]
@@ -459,6 +475,7 @@ Test cases for `isConnected`:
 >         t4 = not $ isConnected graf 'f'
 
 Test cases for `findPath`:
+Covers four guards.
 
 > test_findPath :: Bool
 > test_findPath = all (==True) [t1, t2, t3, t4]
@@ -468,6 +485,7 @@ Test cases for `findPath`:
 >         t4 = isNothing $ findPath graf 'c' 'H'
 
 Test cases for `findPathLabel`:
+Covers four guards of `findPath`, since `findPathLabel` is a wrapper of `findPath`.
 
 > test_findPathLabel :: Bool
 > test_findPathLabel = all (==True) [t1, t2, t3, t4]
@@ -477,6 +495,7 @@ Test cases for `findPathLabel`:
 >         t4 = isNothing $ findPathLabel graf 'c' 'H'
 
 Test cases for `findMinCostPath`:
+Covers four guards.
 
 > test_findMinCostPath :: Bool
 > test_findMinCostPath = all (==True) [t1, t2, t3, t4]

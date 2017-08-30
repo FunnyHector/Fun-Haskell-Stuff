@@ -1,3 +1,8 @@
+Name:              Fang Zhao (300364061)
+Course Number:     COMP304
+Assignment Number: 2
+Question Number:   1
+
 Some general design decisions:
 
 1. Type synonym or algebraic data type?
@@ -254,6 +259,7 @@ One test to test them all!
 > theTest = all (== True) [test_has, test_card, test_add, test_del, test_union, test_intersect, test_equals, test_subset, test_select, test_difference, test_isEmpty, test_mapSet, test_partition]
 
 Test cases for `has`:
+Covers positive and negative paths, plus a different type.
 
 > test_has :: Bool
 > test_has = all (==True) [t1, t2, t3]
@@ -262,6 +268,7 @@ Test cases for `has`:
 >         t3 = has 'b' $ makeSet "bravo"
 
 Test cases for `card`:
+Covers two types, and empty set which is a bit special.
 
 > test_card :: Bool
 > test_card = all (==True) [t1, t2, t3]
@@ -270,6 +277,7 @@ Test cases for `card`:
 >         t3 = card (makeSet "bravo? bravo, bravo! bravo!!!!") == 9
 
 Test cases for `add`:
+Covers both guards.
 
 > test_add :: Bool
 > test_add = all (==True) [t1, t2, t3]
@@ -278,6 +286,7 @@ Test cases for `add`:
 >         t3 = add 0 (makeSet [1..5]) == makeSet [0..5]
 
 Test cases for `del`:
+Covers both guards.
 
 > test_del :: Bool
 > test_del = all (==True) [t1, t2, t3]
@@ -286,6 +295,7 @@ Test cases for `del`:
 >         t3 = del 3 (makeSet [1..5]) == makeSet [1,2,4,5]
 
 Test cases for `union`:
+Covers three patterns.
 
 > test_union :: Bool
 > test_union = all (==True) [t1, t2, t3]
@@ -294,6 +304,7 @@ Test cases for `union`:
 >         t3 = union (makeSet [1..10]) (makeSet [5..15]) == makeSet [1..15]
 
 Test cases for `intersect`:
+Covers three patterns.
 
 > test_intersect :: Bool
 > test_intersect = all (==True) [t1, t2, t3]
@@ -302,6 +313,7 @@ Test cases for `intersect`:
 >         t3 = intersect (makeSet [1..10]) (makeSet [5..15]) == makeSet [5..10]
 
 Test cases for `equals`:
+Tests with three types.
 
 > test_equals :: Bool
 > test_equals = all (==True) [t1, t2, t3]
@@ -310,6 +322,7 @@ Test cases for `equals`:
 >         t3 = makeSet [makeSet [], makeSet [],makeSet [5,4..1], makeSet [1..5], makeSet [3,3,2,2,1,1,4,4,5,5]] == makeSet [emptySet, makeSet [1..5]]
 
 Test cases for `subset`:
+Covers positive and negative paths.
 
 > test_subset :: Bool
 > test_subset = all (==True) [t1, t2, t3]
@@ -318,6 +331,7 @@ Test cases for `subset`:
 >         t3 = not $ subset (makeSet [0..5]) (makeSet [1..10])
 
 Test cases for `select`:
+Tests on two different functions.
 
 > test_select :: Bool
 > test_select = all (==True) [t1, t2]
@@ -325,6 +339,7 @@ Test cases for `select`:
 >         t2 = select odd (makeSet [1..10]) == makeSet [1,3..10]
 
 Test cases for `difference`:
+Covers three patterns.
 
 > test_difference :: Bool
 > test_difference = all (==True) [t1, t2, t3, t4]
@@ -334,6 +349,7 @@ Test cases for `difference`:
 >         t4= difference (makeSet [1..10]) (makeSet [5..15]) == makeSet [1..4]
 
 Test cases for `isEmpty`:
+Covers positive and negative paths.
 
 > test_isEmpty :: Bool
 > test_isEmpty = all (==True) [t1, t2]
@@ -341,6 +357,7 @@ Test cases for `isEmpty`:
 >         t2 = not $ isEmpty (makeSet [1..5])
 
 Test cases for `mapSet`:
+Tests on different functions.
 
 > test_mapSet :: Bool
 > test_mapSet = all (==True) [t1, t2, t3]
@@ -349,6 +366,7 @@ Test cases for `mapSet`:
 >         t3 = mapSet (*2) emptySet == emptySet
 
 Test cases for `partition`:
+Tests on different functions.
 
 > test_partition :: Bool
 > test_partition = all (==True) [t1, t2, t3]
