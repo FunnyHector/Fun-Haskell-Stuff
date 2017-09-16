@@ -19,11 +19,13 @@ Stmt -> "skip" | Var ":=" Exp | "if" Cond "then" Stmt+ "else" Stmt+ "fi" |
 
 Exp -> Number | Id | Exp AOp Exp | "(" Exp ")"
 
-AOp -> "+" | "-" | "*" | "/" | "^"
+AOp -> "+" | "-" | "*" | "/" | "^"      -- arithmetic operators
 
 Cond -> Exp ROp Exp
 
-ROp -> "=" | "!=" | "<" | "<= | ">" | ">="
+ROp -> "=" | "!=" | "<" | "<= | ">" | ">="      -- relational operators
+
+BOp -> "&&" | "||" | "!"
 
 Actually, Stmt+ is treated as StmtList, where:
 
