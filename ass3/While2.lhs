@@ -19,33 +19,46 @@ Map is used to implement the store.
 
 > import Map
 
+nub function is used to remove duplicates
+
 > import Data.List (nub)
+
+Array is used to back up the array implementation in While.
+
+> import Data.Array
 
 Variable names are assumed to be single characters.
 
 > type Var = Char
 
-Value are assumed to be integers.
+Value are assumed to be integers/boolean/array.
 
-> data Val = Int Int | Bool Bool deriving (Show)
+> data Val = Int Int
+>          | Bool Bool
+>          | Arr (Array Int Val)
+>          deriving (Show)
 
 A program is just a list of statements
 
 > type Prog = (SymTab, [Stmt])
 
-A statement can be a skip, assignment, if or do statement.
+A statement can be a skip, assignment, array reference assignment, if, or do
+statement.
 
 > data Stmt = Skip
 >           | Asgn Var Exp
+>           | AsgnArrRef Var Exp Exp
 >           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]. If we use Prog, we have scoped variables.
 >           | Do Exp Prog
 >           deriving (Show)
 
-An expression can be a constant, a variable, or a binary operator applied to
-two expressions
+An expression can be a constant(int/bool), a variable, or a binary operator
+applied to two expressions, or a unary operator applied to one expression.
 
-> data Exp = Const Val
+> data Exp = ConstInt Int
+>          | ConstBool Bool
 >          | Var Var
+>          | ArrRef Var Exp
 >          | Bin BOp Exp Exp
 >          | Una UOp Exp
 >          deriving (Show)
@@ -62,9 +75,13 @@ A unary operation is just boolean operation Not (!)
 
 > data UOp = Not deriving (Eq, Show)
 
-Type is used to check whether an expression has correct type (Int or Bool)
+Type is the type of a value. We can use it to check whether an expression has
+correct type (Int, Bool, or Array).
 
-> data Type = IntType | BoolType deriving (Eq, Show)
+> data Type = IntType
+>           | BoolType
+>           | ArrayType Type
+>           deriving (Eq, Show)
 
 A store is a map from variables to values
 
@@ -76,7 +93,7 @@ A symbol table is a map from varibales to their corresponding types
 
 A result is like Either, it's either a good result or an error with message
 
-> data Result a = OK a | Err String
+> data Result a = OK a | Err String  -- TODO: not used so far
 
 run:
 To run a program with a given initial store, we first statically check:
@@ -99,27 +116,27 @@ If the programme is all good, then we just pass the program and store to exec.
 > run :: Prog -> Store -> Store
 > run p s
 >   | allGood   = exec p s  -- the non-error scenario
->   | otherwise = error (errorMsg undclrVars badAsgns uninitvars misconExps)
+>   | otherwise = error (errorMsg undclrVars uninitvars badAsgns misconExps)
 >   where undclrVars = undeclaredVars p
->         badAsgns   = incorrectAsgnmts p
 >         uninitvars = uninitVars p s
+>         badAsgns   = incorrectAsgnmts p
 >         misconExps = misConExps p
->         allGood    = null undclrVars && null badAsgns && null uninitvars && null misconExps
+>         allGood    = null undclrVars && null uninitvars && null badAsgns && null misconExps
 
 errorMsg:
 This is an ugly ugly string concatenation to put together all the error messages.
 
-> errorMsg :: [Var] -> [Stmt] -> [Var] -> [Exp] -> String
-> errorMsg undclrVars badAsgns uninitvars misconExps
->   = undclrVarsMsg ++ badAsgnsMsg ++ uninitvarsMsg ++ misconExpsMsg
+> errorMsg :: [Var] -> [Var] -> [Stmt] -> [Exp] -> String
+> errorMsg undclrVars uninitvars badAsgns misconExps
+>   = undclrVarsMsg ++ uninitvarsMsg ++ badAsgnsMsg ++ misconExpsMsg
 >     where undclrVarsMsg = if not $ null undclrVars
 >                           then "\nUndeclared Variable(s): " ++ show undclrVars
 >                           else ""
->           badAsgnsMsg   = if not $ null badAsgns
->                           then "\nIncorrect Assignment(s): " ++ show badAsgns
->                           else ""
 >           uninitvarsMsg = if not $ null uninitvars
 >                           then "\nUninitialised Variable(s): " ++ show uninitvars
+>                           else ""
+>           badAsgnsMsg   = if not $ null badAsgns
+>                           then "\nIncorrect Assignment(s): " ++ show badAsgns
 >                           else ""
 >           misconExpsMsg = if not $ null misconExps
 >                           then "\nIncorrect Expression(s): " ++ show misconExps
@@ -142,6 +159,11 @@ Execute a single statement, according to its semantics
 
 > exec' (Asgn var expression) store = setVal var (eval expression store) store
 
+> exec' (AsgnArrRef var idxExp valExp) store = setVal var newVal store
+>   where (Arr oldArray) = getVal var store
+>         (Int idx)      = eval idxExp store
+>         newVal         = Arr (oldArray // [(idx, eval valExp store)])
+
 > exec' (If cond thenPart elsePart) store =
 >   if b
 >   then exec thenPart store
@@ -158,11 +180,22 @@ eval:
 Evaluate an expression, according to its type
 
 > eval :: Exp -> Store -> Val
-> eval (Const n) _ = n
+
+> eval (ConstInt i)  _ = Int i
+> eval (ConstBool b) _ = Bool b
+
 > eval (Var v) s
 >   | hasKey v s = getVal v s
->   | otherwise  = error ("Undefined variable " ++ [v])  -- shouldn't come here
+>   | otherwise  = error ("Undefined variable " ++ [v])  -- shouldn't come here if we do static checking before running.
+
+> eval (ArrRef v idxExp) s
+>   | hasKey v s = arr ! idx
+>   | otherwise  = error ("Undefined variable " ++ [v])  -- shouldn't come here if we do static checking before running.
+>   where (Arr arr) = getVal v s
+>         (Int idx) = eval idxExp s
+
 > eval (Bin op x y) s = applyBin op (eval x s) (eval y s)
+
 > eval (Una op x)   s = applyUna op (eval x s)
 
 applyBin:
@@ -204,9 +237,9 @@ detected statically or in runtime.
 
 What we need to statically check:
 1. all variables used are declared with a type. (undeclaredVars)
-2. all expressions used in assignments have correct type. The type of righthand
+2. all variables used in expression have values initialised. (uninitVars)
+3. all expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-3. all variables used in expression have values initialised. (uninitVars)
 4. conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer values end up as condition expression of If or Do.
    (misConExps)
@@ -234,8 +267,14 @@ Find out all the variables that are used but not declared in a statement.
 > undeclaredVarsStmt (_, Skip) = []
 
 > undeclaredVarsStmt (symTab, Asgn v e)
->   | hasKey v symTab = undeclaredVarsExp (symTab, e)
->   | otherwise       = v : undeclaredVarsExp (symTab, e)
+>   | hasKey v symTab = rest
+>   | otherwise       = v : rest
+>   where rest = undeclaredVarsExp (symTab, e)
+
+> undeclaredVarsStmt (symTab, AsgnArrRef var idxExp valExp)
+>   | hasKey var symTab = rest
+>   | otherwise         = var : rest
+>   where rest = undeclaredVarsExp (symTab, idxExp) ++ undeclaredVarsExp (symTab, valExp)
 
 > undeclaredVarsStmt (symTab, If e c p)
 >   = undeclaredVarsExp (symTab, e) ++ undeclaredVarsProg c ++ undeclaredVarsProg p
@@ -248,35 +287,22 @@ Find out all the variables that are used but not declared in an expression.
 
 > undeclaredVarsExp :: (SymTab, Exp) -> [Var]
 
-> undeclaredVarsExp (_, Const _) = []
+> undeclaredVarsExp (_, ConstInt  _) = []
+> undeclaredVarsExp (_, ConstBool _) = []
 
 > undeclaredVarsExp (symTab, Var v)
 >   | hasKey v symTab = []
 >   | otherwise       = [v]
 
+> undeclaredVarsExp (symTab, ArrRef v idxExp)
+>   | hasKey v symTab = rest
+>   | otherwise       = v : rest
+>   where rest = undeclaredVarsExp (symTab, idxExp)
+
 > undeclaredVarsExp (symTab, Bin _ e e')
 >   = undeclaredVarsExp (symTab, e) ++ undeclaredVarsExp (symTab, e')
 
 > undeclaredVarsExp (symTab, Una _ e) = undeclaredVarsExp (symTab, e)
-
-incorrectAsgnmts:
-Find out all assignments that have unmatching types on two sides in a programme.
-
-> incorrectAsgnmts :: Prog -> [Stmt]
-
-> incorrectAsgnmts (_, []) = []
-
-> incorrectAsgnmts (symTab, Asgn v e : stmts)
->   | hasKey v symTab && (getVal v symTab /= expType e symTab) = Asgn v e : incorrectAsgnmts (symTab, stmts)
->   | otherwise = incorrectAsgnmts (symTab, stmts)
-
-> incorrectAsgnmts (symTab, If _ c p : stmts)
->   = incorrectAsgnmts c ++ incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
-
-> incorrectAsgnmts (symTab, Do _ p : stmts)
->   = incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
-
-> incorrectAsgnmts (symTab, _ : stmts) = incorrectAsgnmts (symTab, stmts)
 
 uninitVars:
 Given a store, find out all variables used but not initialised in a programme.
@@ -302,6 +328,9 @@ Given a store, find out all variables used but not initialised in a statement.
 
 > uninitVarsStmt (Asgn _ e) store = uninitVarsExp e store
 
+> uninitVarsStmt (AsgnArrRef _ idxExp valExp) store
+>   = uninitVarsExp idxExp store ++ uninitVarsExp valExp store
+
 > uninitVarsStmt (If e c p) store
 >   = uninitVarsExp e store ++ uninitVarsProg c store ++ uninitVarsProg p store
 
@@ -312,15 +341,46 @@ Given a store, find out all variables used but not initialised in an expression.
 
 > uninitVarsExp :: Exp -> Store -> [Var]
 
-> uninitVarsExp (Const _) _ = []
+> uninitVarsExp (ConstInt _) _ = []
+> uninitVarsExp (ConstBool _) _ = []
 
 > uninitVarsExp (Var v) store
 >   | hasKey v store = []
 >   | otherwise      = [v]
 
+> uninitVarsExp (ArrRef v idxExp) store
+>   | hasKey v store = rest
+>   | otherwise      = v : rest
+>   where rest = uninitVarsExp idxExp store
+
 > uninitVarsExp (Bin _ e e') store = uninitVarsExp e store ++ uninitVarsExp e' store
 
 > uninitVarsExp (Una _ e) store = uninitVarsExp e store
+
+incorrectAsgnmts:
+Find out all assignments that have unmatching types on two sides in a programme.
+
+> incorrectAsgnmts :: Prog -> [Stmt]
+
+> incorrectAsgnmts (_, []) = []
+
+> incorrectAsgnmts (symTab, Skip : stmts) = incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, s@(Asgn v e) : stmts)
+>   | hasKey v symTab && (getVal v symTab /= expType e symTab) = s : rest
+>   | otherwise = rest
+>   where rest = incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, s@(AsgnArrRef v idxExp valExp) : stmts)
+>   | hasKey v symTab && (expType (ArrRef v idxExp) symTab /= expType valExp symTab) = s : rest
+>   | otherwise = rest
+>   where rest = incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, If _ c p : stmts)
+>   = incorrectAsgnmts c ++ incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, Do _ p : stmts)
+>   = incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
 
 misConExps:
 Find out all the places where integer valued expressions are used as condition
@@ -346,13 +406,20 @@ expType:
 Find out the type of an expression
 
 > expType :: Exp -> SymTab -> Type
-> expType (Const (Int _)) _  = IntType
-> expType (Const (Bool _)) _ = BoolType
+
+> expType (ConstInt  _) _ = IntType
+> expType (ConstBool _) _ = BoolType
+
 > expType (Var v) t
->   | hasKey v t             = getVal v t
->   | otherwise              = error ("Undeclared variable " ++ show v)
-> expType (Bin op x y) t     = binOpType op (expType x t) (expType y t)
-> expType (Una op x) t       = unaOpType op (expType x t)
+>   | hasKey v t          = getVal v t
+>   | otherwise           = error ("Undeclared variable " ++ show v)
+
+> expType (ArrRef v _) t
+>   | hasKey v t          = let (ArrayType tipe) = getVal v t in tipe
+>   | otherwise           = error ("Undeclared variable " ++ show v)
+
+> expType (Bin op x y) t  = binOpType op (expType x t) (expType y t)
+> expType (Una op x) t    = unaOpType op (expType x t)
 
 binOpType:
 Find out the type of an binary operation
@@ -378,11 +445,11 @@ Find out the type of an unary operation
 Some sample expressions
 
 > e0 :: Exp
-> e0 = Const (Int 0)
+> e0 = ConstInt 0
 > e1 :: Exp
-> e1 = Const (Int 1)
+> e1 = ConstInt 1
 > e2 :: Exp
-> e2 = Const (Int 2)
+> e2 = ConstBool True
 > e3 :: Exp
 > e3 = Var 'x'
 > e4 :: Exp
@@ -425,7 +492,7 @@ Some sample programs
 > p5 :: Prog
 > p5 = (t3, [Asgn 'x' (Var 'y')])
 > p6 :: Prog
-> p6 = (t3, [Asgn 'x' (Bin Plus (Var 'x') (Const (Int 1)))])
+> p6 = (t3, [Asgn 'x' (Bin Plus (Var 'x') (ConstInt 1))])
 > p7 :: Prog
 > p7 = (t3, [Asgn 'x' e1, Asgn 'y' e2,
 >       If (Bin Eq (Var 'x') (Var 'y')) ([], [Asgn 'z' e1]) ([], [Asgn 'z' e2])])
@@ -435,12 +502,14 @@ Some sample programs
 
 My test:
 
+> -- TODO: TEST IT!
+
 > t9 :: SymTab
 > -- t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType)]
-> t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType)]
+> t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType), ('a', ArrayType IntType), ('b', ArrayType BoolType)]
 
 > p9 :: Prog
 > p9 = (
 >   t9,
 >   [Asgn 'x' (Una Not (Var 'y')), Asgn 'y' (Var 'x'),
->     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (Const (Int 5))]) (t9, [Asgn 'n' (Const (Int 0))])])
+>     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (ConstInt 5)]) (t9, [Asgn 'n' (ConstInt 0)])])

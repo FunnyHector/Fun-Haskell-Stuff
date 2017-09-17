@@ -9,7 +9,7 @@ operations.
 Operations provided:
 emptyMap :: Map a b
 hasKey :: a -> Map a b -> Bool
-setVal :: a -> Map a b -> Map a b
+setVal :: a -> b -> Map a b -> Map a b
 getVal :: a -> Map a b -> b
 delKey :: a -> Map a b -> Map a b
 

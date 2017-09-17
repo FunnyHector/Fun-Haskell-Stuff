@@ -19,13 +19,15 @@ Map is used to implement the store.
 
 > import Map
 
+nub function is used to remove duplicates
+
 > import Data.List (nub)
 
 Variable names are assumed to be single characters.
 
 > type Var = Char
 
-Value are assumed to be integers.
+Value are assumed to be integers/boolean.
 
 > data Val = Int Int | Bool Bool deriving (Show)
 
@@ -42,7 +44,7 @@ A statement can be a skip, assignment, if or do statement.
 >           deriving (Show)
 
 An expression can be a constant, a variable, or a binary operator applied to
-two expressions
+two expressions, or a unary operator applied to one expression.
 
 > data Exp = Const Val
 >          | Var Var
@@ -76,7 +78,7 @@ A symbol table is a map from varibales to their corresponding types
 
 A result is like Either, it's either a good result or an error with message
 
-> data Result a = OK a | Err String
+> data Result a = OK a | Err String   -- TODO: not used so far
 
 run:
 To run a program with a given initial store, we first statically check:
@@ -99,27 +101,27 @@ If the programme is all good, then we just pass the program and store to exec.
 > run :: Prog -> Store -> Store
 > run p s
 >   | allGood   = exec p s  -- the non-error scenario
->   | otherwise = error (errorMsg undclrVars badAsgns uninitvars misconExps)
+>   | otherwise = error (errorMsg undclrVars uninitvars badAsgns misconExps)
 >   where undclrVars = undeclaredVars p
->         badAsgns   = incorrectAsgnmts p
 >         uninitvars = uninitVars p s
+>         badAsgns   = incorrectAsgnmts p
 >         misconExps = misConExps p
->         allGood    = null undclrVars && null badAsgns && null uninitvars && null misconExps
+>         allGood    = null undclrVars && null uninitvars && null badAsgns && null misconExps
 
 errorMsg:
 This is an ugly ugly string concatenation to put together all the error messages.
 
-> errorMsg :: [Var] -> [Stmt] -> [Var] -> [Exp] -> String
-> errorMsg undclrVars badAsgns uninitvars misconExps
->   = undclrVarsMsg ++ badAsgnsMsg ++ uninitvarsMsg ++ misconExpsMsg
+> errorMsg :: [Var] -> [Var] -> [Stmt] -> [Exp] -> String
+> errorMsg undclrVars uninitvars badAsgns misconExps
+>   = undclrVarsMsg ++ uninitvarsMsg ++ badAsgnsMsg ++ misconExpsMsg
 >     where undclrVarsMsg = if not $ null undclrVars
 >                           then "\nUndeclared Variable(s): " ++ show undclrVars
 >                           else ""
->           badAsgnsMsg   = if not $ null badAsgns
->                           then "\nIncorrect Assignment(s): " ++ show badAsgns
->                           else ""
 >           uninitvarsMsg = if not $ null uninitvars
 >                           then "\nUninitialised Variable(s): " ++ show uninitvars
+>                           else ""
+>           badAsgnsMsg   = if not $ null badAsgns
+>                           then "\nIncorrect Assignment(s): " ++ show badAsgns
 >                           else ""
 >           misconExpsMsg = if not $ null misconExps
 >                           then "\nIncorrect Expression(s): " ++ show misconExps
@@ -161,7 +163,7 @@ Evaluate an expression, according to its type
 > eval (Const n) _ = n
 > eval (Var v) s
 >   | hasKey v s = getVal v s
->   | otherwise  = error ("Undefined variable " ++ [v])  -- shouldn't come here
+>   | otherwise  = error ("Undefined variable " ++ [v])  -- shouldn't come here if we do static checking before running.
 > eval (Bin op x y) s = applyBin op (eval x s) (eval y s)
 > eval (Una op x)   s = applyUna op (eval x s)
 
@@ -204,9 +206,9 @@ detected statically or in runtime.
 
 What we need to statically check:
 1. all variables used are declared with a type. (undeclaredVars)
-2. all expressions used in assignments have correct type. The type of righthand
+2. all variables used in expression have values initialised. (uninitVars)
+3. all expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-3. all variables used in expression have values initialised. (uninitVars)
 4. conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer values end up as condition expression of If or Do.
    (misConExps)
@@ -234,8 +236,9 @@ Find out all the variables that are used but not declared in a statement.
 > undeclaredVarsStmt (_, Skip) = []
 
 > undeclaredVarsStmt (symTab, Asgn v e)
->   | hasKey v symTab = undeclaredVarsExp (symTab, e)
->   | otherwise       = v : undeclaredVarsExp (symTab, e)
+>   | hasKey v symTab = rest
+>   | otherwise       = v : rest
+>   where rest = undeclaredVarsExp (symTab, e)
 
 > undeclaredVarsStmt (symTab, If e c p)
 >   = undeclaredVarsExp (symTab, e) ++ undeclaredVarsProg c ++ undeclaredVarsProg p
@@ -258,25 +261,6 @@ Find out all the variables that are used but not declared in an expression.
 >   = undeclaredVarsExp (symTab, e) ++ undeclaredVarsExp (symTab, e')
 
 > undeclaredVarsExp (symTab, Una _ e) = undeclaredVarsExp (symTab, e)
-
-incorrectAsgnmts:
-Find out all assignments that have unmatching types on two sides in a programme.
-
-> incorrectAsgnmts :: Prog -> [Stmt]
-
-> incorrectAsgnmts (_, []) = []
-
-> incorrectAsgnmts (symTab, Asgn v e : stmts)
->   | hasKey v symTab && (getVal v symTab /= expType e symTab) = Asgn v e : incorrectAsgnmts (symTab, stmts)
->   | otherwise = incorrectAsgnmts (symTab, stmts)
-
-> incorrectAsgnmts (symTab, If _ c p : stmts)
->   = incorrectAsgnmts c ++ incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
-
-> incorrectAsgnmts (symTab, Do _ p : stmts)
->   = incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
-
-> incorrectAsgnmts (symTab, _ : stmts) = incorrectAsgnmts (symTab, stmts)
 
 uninitVars:
 Given a store, find out all variables used but not initialised in a programme.
@@ -321,6 +305,26 @@ Given a store, find out all variables used but not initialised in an expression.
 > uninitVarsExp (Bin _ e e') store = uninitVarsExp e store ++ uninitVarsExp e' store
 
 > uninitVarsExp (Una _ e) store = uninitVarsExp e store
+
+incorrectAsgnmts:
+Find out all assignments that have unmatching types on two sides in a programme.
+
+> incorrectAsgnmts :: Prog -> [Stmt]
+
+> incorrectAsgnmts (_, []) = []
+
+> incorrectAsgnmts (symTab, Skip : stmts) = incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, s@(Asgn v e) : stmts)
+>   | hasKey v symTab && (getVal v symTab /= expType e symTab) = s : rest
+>   | otherwise = rest
+>   where rest = incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, If _ c p : stmts)
+>   = incorrectAsgnmts c ++ incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
+
+> incorrectAsgnmts (symTab, Do _ p : stmts)
+>   = incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
 
 misConExps:
 Find out all the places where integer valued expressions are used as condition
