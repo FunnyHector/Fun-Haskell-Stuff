@@ -1,12 +1,12 @@
 module Test where
 
-data Two = L Int | R Bool deriving (Show)
 
-getTwo :: Int -> Two
-getTwo x = if x > 5 then L x else R False
+fun = putStrLn "What's your name?" >>
+      getLine >>= \name -> putStrLn ("Hello " ++ name)
 
+f x = do
+  return [x,x]
 
-testFun :: Int -> String
-testFun x = if True then show b else show c
-            where (R b) = getTwo x
-                  (L c) = getTwo x
+main = do
+  x <- f 10
+  print x
