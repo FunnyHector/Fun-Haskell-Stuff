@@ -35,7 +35,7 @@ Value are assumed to be integers/boolean/array.
 
 > data Val = Int Int
 >          | Bool Bool
->          | Arr (Array Int Val)
+>          | Arr (Array Int Val) Int Type  -- 3 params: array, size, type
 >          deriving (Show)
 
 A program is just a list of statements
@@ -61,7 +61,7 @@ applied to two expressions, or a unary operator applied to one expression.
 >          | ArrRef Var Exp
 >          | Bin BOp Exp Exp
 >          | Una UOp Exp
->          deriving (Show)
+>          deriving (Eq, Show)
 
 An binary operation can be arithmetic (+, -, *, /, ^), relational (=, /=, <,
 <=, > or >=), or boolean (&&, ||)
@@ -96,51 +96,67 @@ A result is like Either, it's either a good result or an error with message
 > data Result a = OK a | Err String  -- TODO: not used so far
 
 run:
-To run a program with a given initial store, we first statically check:
+To run a program with a given initial store, we first do a series of static
+checking.
 
 1. all variables used are declared with a type. (undeclaredVars)
-2. all expressions used in assignments have correct type. The type of righthand
+2. all variables used in expression have values initialised. (uninitVars)
+3. Array related check:
+   3.1. array variable is not used alone, i.e. without an index. (arrVars)
+   3.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   3.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+        (badAsgnArrRefs)
+   3.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   3.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+4. all expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-3. all variables used in expression have values initialised. (uninitVars)
-4. conditional expressions for If or Do statement are used correctly. This is
-   to make sure no integer values end up as condition expression of If or Do.
-   (misConExps)
+5. conditional expressions for If or Do statement are used correctly. This is
+   to make sure no integer/array values end up as condition expression of If or
+   Do. (misConExps)
 
-Note that during these checks, there could be runtime error thrown. In other
-words, errors are checked in stages. Some errors have to be fixed before other
-errors can be detected. This is actually often seen in other static typed
-languages.
+These checks are done in order, which eliminates the possibility to blow up bit
+by bit as each step goes. Note that during these checks, there still could be
+runtime error thrown. In fact, in many statically typed languages, errors are
+checked in stages. Some errors have to be fixed before other errors can be
+detected.
 
-If the programme is all good, then we just pass the program and store to exec.
+Can we statically check if an array reference is using an index out of boundary?
+Not very feasible, at least we can't if we allow expressions for index. If we
+only allow constant int values to be used as index, checking this exception can
+be done. In order to check the boundary, we have to evaluate the final value
+of the index, but during the evaluation, we can't guarantee that the index
+expression does not attempt to evaluate another array reference. In other words,
+we can't safely evaluate the index expression in compile time, hence can't check
+for index out of boundary exceptions. In fact, in all the statically typed
+languages that I know, index out of boundary exceptions are thrown during runtime.
+
+If the programme is all good, then we just pass the programme and store to exec.
 
 > run :: Prog -> Store -> Store
 > run p s
->   | allGood   = exec p s  -- the non-error scenario
->   | otherwise = error (errorMsg undclrVars uninitvars badAsgns misconExps)
->   where undclrVars = undeclaredVars p
->         uninitvars = uninitVars p s
->         badAsgns   = incorrectAsgnmts p
->         misconExps = misConExps p
->         allGood    = null undclrVars && null uninitvars && null badAsgns && null misconExps
-
-errorMsg:
-This is an ugly ugly string concatenation to put together all the error messages.
-
-> errorMsg :: [Var] -> [Var] -> [Stmt] -> [Exp] -> String
-> errorMsg undclrVars uninitvars badAsgns misconExps
->   = undclrVarsMsg ++ uninitvarsMsg ++ badAsgnsMsg ++ misconExpsMsg
->     where undclrVarsMsg = if not $ null undclrVars
->                           then "\nUndeclared Variable(s): " ++ show undclrVars
->                           else ""
->           uninitvarsMsg = if not $ null uninitvars
->                           then "\nUninitialised Variable(s): " ++ show uninitvars
->                           else ""
->           badAsgnsMsg   = if not $ null badAsgns
->                           then "\nIncorrect Assignment(s): " ++ show badAsgns
->                           else ""
->           misconExpsMsg = if not $ null misconExps
->                           then "\nIncorrect Expression(s): " ++ show misconExps
->                           else ""
+>   | not $ null undclrVars
+>       = error ("\nUndeclared Variable(s): " ++ show undclrVars)
+>   | not $ null uninitvars
+>       = error ("\nUninitialised Variable(s): " ++ show uninitvars)
+>   | not $ null arrvars
+>       = error ("\nArray Variable(s) used alone: " ++ show arrvars)
+>   | not $ null badasgnArrRefs
+>       = error ("\nType errors in array reference assignment(s): " ++ show badasgnArrRefs)
+>   | not $ null badarrRefs
+>       = error ("\nType errors in array reference(s): " ++ show badarrRefs)
+>   | not $ null badAsgns
+>       = error ("\nIncorrect Assignment(s): " ++ show badAsgns)
+>   | not $ null misconExps
+>       = error ("\nIncorrect Expression(s): " ++ show misconExps)
+>   | otherwise
+>       = exec p s -- the non-error scenario
+>   where undclrVars     = undeclaredVars p
+>         uninitvars     = uninitVars p s
+>         arrvars        = arrVars p
+>         badasgnArrRefs = badAsgnArrRefs p
+>         badarrRefs     = badArrRefs p
+>         badAsgns       = incorrectAsgnmts p
+>         misconExps     = misConExps p
 
 exec:
 To execute a program, we just execute each statement in turn, passing the
@@ -160,9 +176,9 @@ Execute a single statement, according to its semantics
 > exec' (Asgn var expression) store = setVal var (eval expression store) store
 
 > exec' (AsgnArrRef var idxExp valExp) store = setVal var newVal store
->   where (Arr oldArray) = getVal var store
->         (Int idx)      = eval idxExp store
->         newVal         = Arr (oldArray // [(idx, eval valExp store)])
+>   where (Arr oldArray size tipe) = getVal var store
+>         (Int idx)                = eval idxExp store
+>         newVal                   = Arr (oldArray // [(idx, eval valExp store)]) size tipe
 
 > exec' (If cond thenPart elsePart) store =
 >   if b
@@ -191,8 +207,8 @@ Evaluate an expression, according to its type
 > eval (ArrRef v idxExp) s
 >   | hasKey v s = arr ! idx
 >   | otherwise  = error ("Undefined variable " ++ [v])  -- shouldn't come here if we do static checking before running.
->   where (Arr arr) = getVal v s
->         (Int idx) = eval idxExp s
+>   where (Arr arr _ _) = getVal v s
+>         (Int idx)     = eval idxExp s
 
 > eval (Bin op x y) s = applyBin op (eval x s) (eval y s)
 
@@ -238,15 +254,22 @@ detected statically or in runtime.
 What we need to statically check:
 1. all variables used are declared with a type. (undeclaredVars)
 2. all variables used in expression have values initialised. (uninitVars)
-3. all expressions used in assignments have correct type. The type of righthand
+3. Array related check:
+   3.1. array variable is not used alone, i.e. without an index. (arrVars)
+   3.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   3.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+        (badAsgnArrRefs)
+   3.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   3.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+4. all expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-4. conditional expressions for If or Do statement are used correctly. This is
-   to make sure no integer values end up as condition expression of If or Do.
-   (misConExps)
+5. conditional expressions for If or Do statement are used correctly. This is
+   to make sure no integer/array values end up as condition expression of If or
+   Do. (misConExps)
 
 undeclaredVars:
 Find out all the variables that are used but not declared in a programme.
-(This wrapper method get rid of duplicate)
+(This wrapper method get rid of duplicates)
 
 > undeclaredVars :: Prog -> [Var]
 > undeclaredVars p = nub $ undeclaredVarsProg p
@@ -306,7 +329,7 @@ Find out all the variables that are used but not declared in an expression.
 
 uninitVars:
 Given a store, find out all variables used but not initialised in a programme.
-(This wrapper method get rid of duplicate)
+(This wrapper method get rid of duplicates)
 
 > uninitVars :: Prog -> Store -> [Var]
 > uninitVars p s = nub $ uninitVarsProg p s
@@ -357,6 +380,133 @@ Given a store, find out all variables used but not initialised in an expression.
 
 > uninitVarsExp (Una _ e) store = uninitVarsExp e store
 
+arrVars:
+Checks whether an array variable is used alone, i.e. without an index.
+(This wrapper method get rid of duplicates)
+
+> arrVars :: Prog -> [Var]
+> arrVars p = nub $ arrVars p
+
+arrVarsProg:
+Checks in programme whether an array variable is used alone, i.e. without an index.
+
+> arrVarsProg :: Prog -> [Var]
+> arrVarsProg (_, []) = []
+> arrVarsProg (symTab, stmt : stmts)
+>   = arrVarsStmt (symTab, stmt) ++ arrVarsProg (symTab, stmts)
+
+arrVarsStmt:
+Checks in statement whether an array variable is used alone, i.e. without an index.
+
+> arrVarsStmt :: (SymTab, Stmt) -> [Var]
+
+> arrVarsStmt (_, Skip) = []
+
+> arrVarsStmt (symTab, Asgn _ e) = arrVarsExp (symTab, e)
+
+> arrVarsStmt (symTab, AsgnArrRef _ idxExp valExp)
+>   = arrVarsExp (symTab, idxExp) ++ arrVarsExp (symTab, valExp)
+
+> arrVarsStmt (symTab, If e c p)
+>   = arrVarsExp (symTab, e) ++ arrVarsProg c ++ arrVarsProg p
+
+> arrVarsStmt (symTab, Do e p)
+>   = arrVarsExp (symTab, e) ++ arrVarsProg p
+
+arrVarsExp:
+Checks in expression whether an array variable is used alone, i.e. without an index.
+
+> arrVarsExp :: (SymTab, Exp) -> [Var]
+
+> arrVarsExp (_, ConstInt  _) = []
+> arrVarsExp (_, ConstBool _) = []
+
+> arrVarsExp (symTab, Var v)
+>   | hasKey v symTab && getVal v symTab == IntType  = []
+>   | hasKey v symTab && getVal v symTab == BoolType = []
+>   | otherwise       = [v]
+
+> arrVarsExp (symTab, ArrRef _ idxExp) = arrVarsExp (symTab, idxExp)
+
+> arrVarsExp (symTab, Bin _ e e')
+>   = arrVarsExp (symTab, e) ++ arrVarsExp (symTab, e')
+
+> arrVarsExp (symTab, Una _ e) = arrVarsExp (symTab, e)
+
+badAsgnArrRefs:
+Checks whether variables and index expressions have incorrect type in
+(AsgnArrRef Var Exp Exp)
+
+> badAsgnArrRefs :: Prog -> [Stmt]
+
+> badAsgnArrRefs (_, []) = []
+
+> badAsgnArrRefs (symTab, s@(AsgnArrRef v idxExp _) : stmts)
+>   | hasKey v symTab && (getVal v symTab == IntType)  = s : rest
+>   | hasKey v symTab && (getVal v symTab == BoolType) = s : rest
+>   | expType idxExp symTab /= IntType = s : rest
+>   | otherwise = rest
+>   where rest = badAsgnArrRefs (symTab, stmts)
+
+
+> badAsgnArrRefs (symTab, _ : stmts) = badAsgnArrRefs (symTab, stmts)
+
+badArrRefs:
+Checks whether variables and index expressions have incorrect type in
+(ArrRef Var Exp)
+This wrapper method get rid of duplicates.
+
+> badArrRefs :: Prog -> [Exp]
+> badArrRefs p = nub $ badArrRefs p
+
+badArrRefsProg:
+Checks whether variables and index expressions have incorrect type in
+(ArrRef Var Exp) in a programme
+
+> badArrRefsProg :: Prog -> [Exp]
+> badArrRefsProg (_, []) = []
+> badArrRefsProg (symTab, stmt : stmts)
+>   = badArrRefsStmt (symTab, stmt) ++ badArrRefsProg (symTab, stmts)
+
+badArrRefsStmt:
+Checks whether variables and index expressions have incorrect type in
+(ArrRef Var Exp) in a Statement
+
+> badArrRefsStmt :: (SymTab, Stmt) -> [Exp]
+
+> badArrRefsStmt (_, Skip) = []
+
+> badArrRefsStmt (symTab, Asgn _ e) = badArrRefsExp (symTab, e)
+
+> badArrRefsStmt (symTab, AsgnArrRef _ idxExp valExp)
+>   = badArrRefsExp (symTab, idxExp) ++ badArrRefsExp (symTab, valExp)
+
+> badArrRefsStmt (symTab, If e c p)
+>   = badArrRefsExp (symTab, e) ++ badArrRefsProg c ++ badArrRefsProg p
+
+> badArrRefsStmt (symTab, Do e p) = badArrRefsExp (symTab, e) ++ badArrRefsProg p
+
+badArrRefsExp:
+Checks whether variables and index expressions have incorrect type in
+(ArrRef Var Exp) in an expression
+
+> badArrRefsExp :: (SymTab, Exp) -> [Exp]
+
+> badArrRefsExp (_, ConstInt  _) = []
+> badArrRefsExp (_, ConstBool _) = []
+> badArrRefsExp (_, Var       _) = []
+
+> badArrRefsExp (symTab, e@(ArrRef v idxExp))
+>   | hasKey v symTab && (getVal v symTab == IntType)  = e : rest
+>   | hasKey v symTab && (getVal v symTab == BoolType) = e : rest
+>   | expType idxExp symTab /= IntType = e : rest
+>   | otherwise = rest
+>   where rest = badArrRefsExp (symTab, idxExp)
+
+> badArrRefsExp (symTab, Bin _ e e') = badArrRefsExp (symTab, e) ++ badArrRefsExp (symTab, e')
+
+> badArrRefsExp (symTab, Una _ e) = badArrRefsExp (symTab, e)
+
 incorrectAsgnmts:
 Find out all assignments that have unmatching types on two sides in a programme.
 
@@ -371,8 +521,8 @@ Find out all assignments that have unmatching types on two sides in a programme.
 >   | otherwise = rest
 >   where rest = incorrectAsgnmts (symTab, stmts)
 
-> incorrectAsgnmts (symTab, s@(AsgnArrRef v idxExp valExp) : stmts)
->   | hasKey v symTab && (expType (ArrRef v idxExp) symTab /= expType valExp symTab) = s : rest
+> incorrectAsgnmts (symTab, s@(AsgnArrRef v _ valExp) : stmts)
+>   | hasKey v symTab && (expType (ArrRef v (ConstInt 0)) symTab /= expType valExp symTab) = s : rest
 >   | otherwise = rest
 >   where rest = incorrectAsgnmts (symTab, stmts)
 

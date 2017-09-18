@@ -81,51 +81,41 @@ A result is like Either, it's either a good result or an error with message
 > data Result a = OK a | Err String   -- TODO: not used so far
 
 run:
-To run a program with a given initial store, we first statically check:
+To run a program with a given initial store, we first do a series of static
+checking.
 
 1. all variables used are declared with a type. (undeclaredVars)
-2. all expressions used in assignments have correct type. The type of righthand
+2. all variables used in expression have values initialised. (uninitVars)
+3. all expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-3. all variables used in expression have values initialised. (uninitVars)
 4. conditional expressions for If or Do statement are used correctly. This is
-   to make sure no integer values end up as condition expression of If or Do.
-   (misConExps)
+   to make sure no integer/array values end up as condition expression of If or
+   Do. (misConExps)
 
-Note that during these checks, there could be runtime error thrown. In other
-words, errors are checked in stages. Some errors have to be fixed before other
-errors can be detected. This is actually often seen in other static typed
-languages.
+These checks are done in order, which eliminates the possibility to blow up bit
+by bit as each step goes. Note that during these checks, there still could be
+runtime error thrown. In fact, in many statically typed languages, errors are
+checked in stages. Some errors have to be fixed before other errors can be
+detected.
 
-If the programme is all good, then we just pass the program and store to exec.
+If the programme is all good, then we just pass the programme and store to exec.
 
 > run :: Prog -> Store -> Store
 > run p s
->   | allGood   = exec p s  -- the non-error scenario
->   | otherwise = error (errorMsg undclrVars uninitvars badAsgns misconExps)
+>   | not $ null undclrVars
+>       = error ("\nUndeclared Variable(s): " ++ show undclrVars)
+>   | not $ null uninitvars
+>       = error ("\nUninitialised Variable(s): " ++ show uninitvars)
+>   | not $ null badAsgns
+>       = error ("\nIncorrect Assignment(s): " ++ show badAsgns)
+>   | not $ null misconExps
+>       = error ("\nIncorrect Expression(s): " ++ show misconExps)
+>   | otherwise
+>       = exec p s -- the non-error scenario
 >   where undclrVars = undeclaredVars p
 >         uninitvars = uninitVars p s
 >         badAsgns   = incorrectAsgnmts p
 >         misconExps = misConExps p
->         allGood    = null undclrVars && null uninitvars && null badAsgns && null misconExps
-
-errorMsg:
-This is an ugly ugly string concatenation to put together all the error messages.
-
-> errorMsg :: [Var] -> [Var] -> [Stmt] -> [Exp] -> String
-> errorMsg undclrVars uninitvars badAsgns misconExps
->   = undclrVarsMsg ++ uninitvarsMsg ++ badAsgnsMsg ++ misconExpsMsg
->     where undclrVarsMsg = if not $ null undclrVars
->                           then "\nUndeclared Variable(s): " ++ show undclrVars
->                           else ""
->           uninitvarsMsg = if not $ null uninitvars
->                           then "\nUninitialised Variable(s): " ++ show uninitvars
->                           else ""
->           badAsgnsMsg   = if not $ null badAsgns
->                           then "\nIncorrect Assignment(s): " ++ show badAsgns
->                           else ""
->           misconExpsMsg = if not $ null misconExps
->                           then "\nIncorrect Expression(s): " ++ show misconExps
->                           else ""
 
 exec:
 To execute a program, we just execute each statement in turn, passing the
