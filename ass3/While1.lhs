@@ -19,7 +19,7 @@ Map is used to implement the store.
 
 > import Map
 
-nub function is used to remove duplicates
+`nub` function is used to remove duplicates
 
 > import Data.List (nub)
 
@@ -29,9 +29,9 @@ Variable names are assumed to be single characters.
 
 Value are assumed to be integers/boolean.
 
-> data Val = Int Int | Bool Bool deriving (Show)
+> data Val = Int Int | Bool Bool deriving (Eq, Show)
 
-A program is just a list of statements
+A program is a symbol table and a list of statements
 
 > type Prog = (SymTab, [Stmt])
 
@@ -39,7 +39,7 @@ A statement can be a skip, assignment, if or do statement.
 
 > data Stmt = Skip
 >           | Asgn Var Exp
->           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]. If we use Prog, we have scoped variables.
+>           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]? If we use Prog, we have scoped variables.
 >           | Do Exp Prog
 >           deriving (Show)
 
@@ -60,7 +60,7 @@ An binary operation can be arithmetic (+, -, *, /, ^), relational (=, /=, <,
 >            And | Or
 >            deriving (Eq, Show)
 
-A unary operation is just boolean operation Not (!)
+Unary operation at the moment only contains boolean operation Not (!)
 
 > data UOp = Not deriving (Eq, Show)
 
@@ -72,7 +72,7 @@ A store is a map from variables to values
 
 > type Store = Map Var Val
 
-A symbol table is a map from varibales to their corresponding types
+A symbol table is a map from varibales to types
 
 > type SymTab = Map Var Type
 
@@ -84,11 +84,15 @@ run:
 To run a program with a given initial store, we first do a series of static
 checking.
 
-1. all variables used are declared with a type. (undeclaredVars)
-2. all variables used in expression have values initialised. (uninitVars)
-3. all expressions used in assignments have correct type. The type of righthand
+1. The symbol table and the store matches each other.
+   1.1. All declared variables are initialised. (dclrdButNotInitVars)
+   1.2. All initialised variables are declared. (intiButNotdclrdVars)
+   1.3. Types are matched. (typeMismatchedVars)
+2. All variables used are declared with a type. (undeclaredVars)
+3. All variables used in expression have values initialised. (uninitVars)
+4. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-4. conditional expressions for If or Do statement are used correctly. This is
+5. Conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer/array values end up as condition expression of If or
    Do. (misConExps)
 
@@ -102,20 +106,31 @@ If the programme is all good, then we just pass the programme and store to exec.
 
 > run :: Prog -> Store -> Store
 > run p s
->   | not $ null undclrVars
->       = error ("\nUndeclared Variable(s): " ++ show undclrVars)
->   | not $ null uninitvars
->       = error ("\nUninitialised Variable(s): " ++ show uninitvars)
->   | not $ null badAsgns
->       = error ("\nIncorrect Assignment(s): " ++ show badAsgns)
->   | not $ null misconExps
->       = error ("\nIncorrect Expression(s): " ++ show misconExps)
+>     -- these checks have really bad names, see the where clause for more info
+>   | not $ null check11
+>       = error ("\nDeclared but not initialised Variable(s): " ++ show check11)
+>   | not $ null check12
+>       = error ("\nInitialised but not declared Variable(s): " ++ show check12)
+>   | not $ null check13
+>       = error ("\nMismatched type in store and symbol table: " ++ show check13)
+>   | not $ null check2
+>       = error ("\nUndeclared Variable(s): " ++ show check2)
+>   | not $ null check3
+>       = error ("\nUninitialised Variable(s): " ++ show check3)
+>   | not $ null check4
+>       = error ("\nIncorrect Assignment(s): " ++ show check4)
+>   | not $ null check5
+>       = error ("\nIncorrect Expression(s): " ++ show check5)
 >   | otherwise
 >       = exec p s -- the non-error scenario
->   where undclrVars = undeclaredVars p
->         uninitvars = uninitVars p s
->         badAsgns   = incorrectAsgnmts p
->         misconExps = misConExps p
+>   where check11  = dclrdButNotInitVars p s    -- check no. 1.1
+>         check12  = intiButNotdclrdVars p s    -- check no. 1.2
+>         check13  = typeMismatchedVars p s     -- check no. 1.3
+>         check2   = undeclaredVars p           -- check no. 2
+>         check3   = uninitVars p s             -- check no. 3
+>         check4   = incorrectAsgnmts p         -- check no. 4
+>         check5   = misConExps p               -- check no. 5
+
 
 exec:
 To execute a program, we just execute each statement in turn, passing the
@@ -195,13 +210,59 @@ TODO: explain the approach I choose, whether uninitialised variables can be
 detected statically or in runtime.
 
 What we need to statically check:
-1. all variables used are declared with a type. (undeclaredVars)
-2. all variables used in expression have values initialised. (uninitVars)
-3. all expressions used in assignments have correct type. The type of righthand
+1. The symbol table and the store matches each other.
+   1.1. All declared variables are initialised. (dclrdButNotInitVars)
+   1.2. All initialised variables are declared. (intiButNotdclrdVars)
+   1.3. Types are matched. (typeMismatchedVars)
+2. All variables used are declared with a type. (undeclaredVars)
+3. All variables used in expression have values initialised. (uninitVars)
+4. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-4. conditional expressions for If or Do statement are used correctly. This is
-   to make sure no integer values end up as condition expression of If or Do.
-   (misConExps)
+5. Conditional expressions for If or Do statement are used correctly. This is
+   to make sure no integer/array values end up as condition expression of If or
+   Do. (misConExps)
+
+
+dclrdButNotInitVars:
+Compare the symbol table and the store, and find out all variables that is
+declared but not initialised (exists in symbol table but not in store).
+(naming is hard....)
+
+> dclrdButNotInitVars :: Prog -> Store -> [Var]
+> dclrdButNotInitVars (t, _) s
+>   = filter (`notElem` varsStore) varsTable
+>     where varsStore = map fst s
+>           varsTable = map fst t
+
+intiButNotdclrdVars:
+Compare the symbol table and the store, and find out all variables that is
+initialised but not declared (exists in store but not in symbol table).
+
+> intiButNotdclrdVars :: Prog -> Store -> [Var]
+> intiButNotdclrdVars (t, _) s
+>   = filter (`notElem` varsTable) varsStore
+>     where varsStore = map fst s
+>           varsTable = map fst t
+
+typeMismatchedVars:
+Compare the symbol table and the store, and find out all variables that have
+mismatched type.
+If we run the checks in order, we can guarantee that symbol table and store
+have same variables now (by same I mean the name of it). We only need to check
+the type now.
+
+> typeMismatchedVars :: Prog -> Store -> [Var]
+> typeMismatchedVars (table, _) store
+>   = map fst $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
+
+isSameType:
+A helper function to check if two variables have same types in store and in
+symbol table
+
+> isSameType :: Val -> Type -> Bool
+> isSameType (Int _)       IntType         = True
+> isSameType (Bool _)      BoolType        = True
+> isSameType _             _               = False
 
 undeclaredVars:
 Find out all the variables that are used but not declared in a programme.
@@ -344,7 +405,7 @@ Find out the type of an expression
 > expType (Const (Bool _)) _ = BoolType
 > expType (Var v) t
 >   | hasKey v t             = getVal v t
->   | otherwise              = error ("Undeclared variable " ++ show v)
+>   | otherwise              = error ("Undeclared variable " ++ show v)  -- shouldn't come here if we do static checking before running.
 > expType (Bin op x y) t     = binOpType op (expType x t) (expType y t)
 > expType (Una op x) t       = unaOpType op (expType x t)
 
@@ -430,11 +491,19 @@ Some sample programs
 My test:
 
 > t9 :: SymTab
-> -- t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType)]
-> t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType)]
+> t9 = [
+>        ('x', BoolType),
+>        ('y', BoolType),
+>        ('m', IntType),
+>        ('n', IntType)
+>      ]
+
 
 > p9 :: Prog
 > p9 = (
 >   t9,
->   [Asgn 'x' (Una Not (Var 'y')), Asgn 'y' (Var 'x'),
->     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (Const (Int 5))]) (t9, [Asgn 'n' (Const (Int 0))])])
+>   [
+>     Asgn 'x' (Una Not (Var 'y')),
+>     Asgn 'y' (Var 'x'),
+>     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (Const (Int 5))]) (t9, [Asgn 'n' (Const (Int 0))])
+>   ])

@@ -19,7 +19,7 @@ Map is used to implement the store.
 
 > import Map
 
-nub function is used to remove duplicates
+`nub` function is used to remove duplicates
 
 > import Data.List (nub)
 
@@ -36,9 +36,9 @@ Value are assumed to be integers/boolean/array.
 > data Val = Int Int
 >          | Bool Bool
 >          | Arr (Array Int Val) Int Type  -- 3 params: array, size, type
->          deriving (Show)
+>          deriving (Eq, Show)
 
-A program is just a list of statements
+A program is a symbol table and a list of statements
 
 > type Prog = (SymTab, [Stmt])
 
@@ -48,7 +48,7 @@ statement.
 > data Stmt = Skip
 >           | Asgn Var Exp
 >           | AsgnArrRef Var Exp Exp
->           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]. If we use Prog, we have scoped variables.
+>           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]? If we use Prog, we have scoped variables.
 >           | Do Exp Prog
 >           deriving (Show)
 
@@ -71,7 +71,7 @@ An binary operation can be arithmetic (+, -, *, /, ^), relational (=, /=, <,
 >            And | Or
 >            deriving (Eq, Show)
 
-A unary operation is just boolean operation Not (!)
+Unary operation at the moment only contains boolean operation Not (!)
 
 > data UOp = Not deriving (Eq, Show)
 
@@ -87,7 +87,7 @@ A store is a map from variables to values
 
 > type Store = Map Var Val
 
-A symbol table is a map from varibales to their corresponding types
+A symbol table is a map from varibales to types
 
 > type SymTab = Map Var Type
 
@@ -99,18 +99,27 @@ run:
 To run a program with a given initial store, we first do a series of static
 checking.
 
-1. all variables used are declared with a type. (undeclaredVars)
-2. all variables used in expression have values initialised. (uninitVars)
-3. Array related check:
-   3.1. array variable is not used alone, i.e. without an index. (arrVars)
-   3.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
-   3.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+1. The symbol table and the store matches each other.
+   1.1. All declared variables are initialised. (dclrdButNotInitVars)
+   1.2. All initialised variables are declared. (intiButNotdclrdVars)
+   1.3. Types are matched. (typeMismatchedVars)
+
+2. All variables used are declared with a type. (undeclaredVars)
+
+3. All variables used in expression have values initialised. (uninitVars)
+
+4. Array related check:
+   4.1. Array variable is not used alone, i.e. without an index. (arrVars)
+   4.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   4.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
         (badAsgnArrRefs)
-   3.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
-   3.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
-4. all expressions used in assignments have correct type. The type of righthand
+   4.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   4.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+
+5. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-5. conditional expressions for If or Do statement are used correctly. This is
+
+6. Conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer/array values end up as condition expression of If or
    Do. (misConExps)
 
@@ -130,33 +139,60 @@ we can't safely evaluate the index expression in compile time, hence can't check
 for index out of boundary exceptions. In fact, in all the statically typed
 languages that I know, index out of boundary exceptions are thrown during runtime.
 
+Can we statically check if an array reference is accessing an uninitialised
+element? My guess for this question would also be no. The reason is same as above.
+It's just difficult to evaluate an index value out of an expression without
+triggering more errors. Aside from that reason, there is one more risk: Haskel
+Array throwns exception if we access an element that is not there, and I don't
+know how to catch the exception in Haskel yet. An ideal solution would be:
+
+  -- say we have an array `arr`, and it has no element at index 5
+  eval (ArrRef arr 5) store
+    | exceptionThrown "undefined array element" = NULL
+    | otherwise                                 = arr ! 5
+
+This is only to show the idea. Please ignore the totally-wont-work syntax :P
+A lot of other languages uses default values for this operation, e.g. in Java
+gives back null for array of objects or 0 for array of primitive integers. But
+That solution brings lots of controversial discussions as well.
+
 If the programme is all good, then we just pass the programme and store to exec.
 
 > run :: Prog -> Store -> Store
 > run p s
->   | not $ null undclrVars
->       = error ("\nUndeclared Variable(s): " ++ show undclrVars)
->   | not $ null uninitvars
->       = error ("\nUninitialised Variable(s): " ++ show uninitvars)
->   | not $ null arrvars
->       = error ("\nArray Variable(s) used alone: " ++ show arrvars)
->   | not $ null badasgnArrRefs
->       = error ("\nType errors in array reference assignment(s): " ++ show badasgnArrRefs)
->   | not $ null badarrRefs
->       = error ("\nType errors in array reference(s): " ++ show badarrRefs)
->   | not $ null badAsgns
->       = error ("\nIncorrect Assignment(s): " ++ show badAsgns)
->   | not $ null misconExps
->       = error ("\nIncorrect Expression(s): " ++ show misconExps)
+>     -- these checks have really bad names, see the where clause for more info
+>   | not $ null check11
+>       = error ("\nDeclared but not initialised Variable(s): " ++ show check11)
+>   | not $ null check12
+>       = error ("\nInitialised but not declared Variable(s): " ++ show check12)
+>   | not $ null check13
+>       = error ("\nMismatched type in store and symbol table: " ++ show check13)
+>   | not $ null check2
+>       = error ("\nUndeclared Variable(s): " ++ show check2)
+>   | not $ null check3
+>       = error ("\nUninitialised Variable(s): " ++ show check3)
+>   | not $ null check41
+>       = error ("\nArray Variable(s) used alone: " ++ show check41)
+>   | not $ null check423
+>       = error ("\nType errors in array reference assignment(s): " ++ show check423)
+>   | not $ null check445
+>       = error ("\nType errors in array reference(s): " ++ show check445)
+>   | not $ null check5
+>       = error ("\nIncorrect Assignment(s): " ++ show check5)
+>   | not $ null check6
+>       = error ("\nIncorrect Expression(s): " ++ show check6)
 >   | otherwise
 >       = exec p s -- the non-error scenario
->   where undclrVars     = undeclaredVars p
->         uninitvars     = uninitVars p s
->         arrvars        = arrVars p
->         badasgnArrRefs = badAsgnArrRefs p
->         badarrRefs     = badArrRefs p
->         badAsgns       = incorrectAsgnmts p
->         misconExps     = misConExps p
+>   where check11  = dclrdButNotInitVars p s    -- check no. 1.1
+>         check12  = intiButNotdclrdVars p s    -- check no. 1.2
+>         check13  = typeMismatchedVars p s     -- check no. 1.3
+>         check2   = undeclaredVars p           -- check no. 2
+>         check3   = uninitVars p s             -- check no. 3
+>         check41  = arrVars p                  -- check no. 4.1
+>         check423 = badAsgnArrRefs p           -- check no. 4.2 & 4.3
+>         check445 = badArrRefs p               -- check no. 4.4 & 4.5
+>         check5   = incorrectAsgnmts p         -- check no. 5
+>         check6   = misConExps p               -- check no. 6
 
 exec:
 To execute a program, we just execute each statement in turn, passing the
@@ -252,20 +288,73 @@ TODO: explain the approach I choose, whether uninitialised variables can be
 detected statically or in runtime.
 
 What we need to statically check:
-1. all variables used are declared with a type. (undeclaredVars)
-2. all variables used in expression have values initialised. (uninitVars)
-3. Array related check:
-   3.1. array variable is not used alone, i.e. without an index. (arrVars)
-   3.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
-   3.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+
+1. The symbol table and the store matches each other.
+   1.1. All declared variables are initialised. (dclrdButNotInitVars)
+   1.2. All initialised variables are declared. (intiButNotdclrdVars)
+   1.3. Types are matched. (typeMismatchedVars)
+
+2. All variables used are declared with a type. (undeclaredVars)
+
+3. All variables used in expression have values initialised. (uninitVars)
+
+4. Array related check:
+   4.1. Array variable is not used alone, i.e. without an index. (arrVars)
+   4.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   4.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
         (badAsgnArrRefs)
-   3.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
-   3.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
-4. all expressions used in assignments have correct type. The type of righthand
+   4.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   4.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+
+5. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
-5. conditional expressions for If or Do statement are used correctly. This is
+
+6. Conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer/array values end up as condition expression of If or
    Do. (misConExps)
+
+
+dclrdButNotInitVars:
+Compare the symbol table and the store, and find out all variables that is
+declared but not initialised (exists in symbol table but not in store).
+(naming is hard....)
+
+> dclrdButNotInitVars :: Prog -> Store -> [Var]
+> dclrdButNotInitVars (t, _) s
+>   = filter (`notElem` varsStore) varsTable
+>     where varsStore = map fst s
+>           varsTable = map fst t
+
+intiButNotdclrdVars:
+Compare the symbol table and the store, and find out all variables that is
+initialised but not declared (exists in store but not in symbol table).
+
+> intiButNotdclrdVars :: Prog -> Store -> [Var]
+> intiButNotdclrdVars (t, _) s
+>   = filter (`notElem` varsTable) varsStore
+>     where varsStore = map fst s
+>           varsTable = map fst t
+
+typeMismatchedVars:
+Compare the symbol table and the store, and find out all variables that have
+mismatched type.
+If we run the checks in order, we can guarantee that symbol table and store
+have same variables now (by same I mean the name of it). We only need to check
+the type now.
+
+> typeMismatchedVars :: Prog -> Store -> [Var]
+> typeMismatchedVars (table, _) store
+>   = map fst $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
+
+isSameType:
+A helper function to check if two variables have same types in store and in
+symbol table
+
+> isSameType :: Val -> Type -> Bool
+> isSameType (Int _)       IntType         = True
+> isSameType (Bool _)      BoolType        = True
+> isSameType (Arr _ _ tp1) (ArrayType tp2) = tp1 == tp2
+> isSameType _             _               = False
 
 undeclaredVars:
 Find out all the variables that are used but not declared in a programme.
@@ -385,7 +474,7 @@ Checks whether an array variable is used alone, i.e. without an index.
 (This wrapper method get rid of duplicates)
 
 > arrVars :: Prog -> [Var]
-> arrVars p = nub $ arrVars p
+> arrVars p = nub $ arrVarsProg p
 
 arrVarsProg:
 Checks in programme whether an array variable is used alone, i.e. without an index.
@@ -457,7 +546,7 @@ Checks whether variables and index expressions have incorrect type in
 This wrapper method get rid of duplicates.
 
 > badArrRefs :: Prog -> [Exp]
-> badArrRefs p = nub $ badArrRefs p
+> badArrRefs p = nub $ badArrRefsProg p
 
 badArrRefsProg:
 Checks whether variables and index expressions have incorrect type in
@@ -562,11 +651,11 @@ Find out the type of an expression
 
 > expType (Var v) t
 >   | hasKey v t          = getVal v t
->   | otherwise           = error ("Undeclared variable " ++ show v)
+>   | otherwise           = error ("Undeclared variable " ++ show v)  -- shouldn't come here if we do static checking before running.
 
 > expType (ArrRef v _) t
 >   | hasKey v t          = let (ArrayType tipe) = getVal v t in tipe
->   | otherwise           = error ("Undeclared variable " ++ show v)
+>   | otherwise           = error ("Undeclared variable " ++ show v)  -- shouldn't come here if we do static checking before running.
 
 > expType (Bin op x y) t  = binOpType op (expType x t) (expType y t)
 > expType (Una op x) t    = unaOpType op (expType x t)
@@ -652,14 +741,32 @@ Some sample programs
 
 My test:
 
-> -- TODO: TEST IT!
+> s9 :: Store
+> s9 = [
+>        ('x', Bool True),
+>        ('y', Bool False),
+>        ('z', Arr arr 4 IntType),
+>        ('n', Int 5)
+>      ]
+>      where arr = array (0,3) [(0,Int 0),(1,Int 1),(2,Int 2),(3,Int 3)]
 
 > t9 :: SymTab
-> -- t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType)]
-> t9 = [('x', BoolType), ('y', BoolType), ('m', IntType), ('n', IntType), ('a', ArrayType IntType), ('b', ArrayType BoolType)]
+> t9 = [
+>        ('x', BoolType),
+>        ('y', BoolType),
+>        -- ('m', IntType),
+>        ('n', IntType),
+>        ('z', ArrayType IntType)
+>        -- ('a', ArrayType BoolType)
+>      ]
 
 > p9 :: Prog
 > p9 = (
 >   t9,
->   [Asgn 'x' (Una Not (Var 'y')), Asgn 'y' (Var 'x'),
->     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (ConstInt 5)]) (t9, [Asgn 'n' (ConstInt 0)])])
+>   [
+>     Asgn 'x' (Una Not (Var 'y')),
+>     Asgn 'm' (Var 'x'),
+>     AsgnArrRef 'z' (ConstInt 0) (Bin Plus (ArrRef 'z' (ConstInt 2)) (ConstInt 10)),
+>     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (ConstInt 5)]) (t9, [Asgn 'n' (ConstInt 0)]),
+>     Do (Bin Gt (Var 'n') (ConstInt 1)) (t9, [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))])
+>   ])
