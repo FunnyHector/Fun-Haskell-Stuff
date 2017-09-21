@@ -27,7 +27,7 @@ Variable names are assumed to be single characters.
 
 > type Var = Char
 
-Value are assumed to be integers/boolean.
+Values are assumed to be integers/boolean.
 
 > data Val = Int Int | Bool Bool deriving (Eq, Show)
 
@@ -231,8 +231,8 @@ declared but not initialised (exists in symbol table but not in store).
 > dclrdButNotInitVars :: Prog -> Store -> [Var]
 > dclrdButNotInitVars (t, _) s
 >   = filter (`notElem` varsStore) varsTable
->     where varsStore = map fst s
->           varsTable = map fst t
+>     where varsStore = keys s
+>           varsTable = keys t
 
 intiButNotdclrdVars:
 Compare the symbol table and the store, and find out all variables that is
@@ -241,8 +241,8 @@ initialised but not declared (exists in store but not in symbol table).
 > intiButNotdclrdVars :: Prog -> Store -> [Var]
 > intiButNotdclrdVars (t, _) s
 >   = filter (`notElem` varsTable) varsStore
->     where varsStore = map fst s
->           varsTable = map fst t
+>     where varsStore = keys s
+>           varsTable = keys t
 
 typeMismatchedVars:
 Compare the symbol table and the store, and find out all variables that have
@@ -253,7 +253,7 @@ the type now.
 
 > typeMismatchedVars :: Prog -> Store -> [Var]
 > typeMismatchedVars (table, _) store
->   = map fst $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
+>   = keys $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
 
 isSameType:
 A helper function to check if two variables have same types in store and in
@@ -358,7 +358,7 @@ Given a store, find out all variables used but not initialised in an expression.
 > uninitVarsExp (Una _ e) store = uninitVarsExp e store
 
 incorrectAsgnmts:
-Find out all assignments that have unmatching types on two sides in a programme.
+Find out all assignments that have mismatching types on two sides in a programme.
 
 > incorrectAsgnmts :: Prog -> [Stmt]
 

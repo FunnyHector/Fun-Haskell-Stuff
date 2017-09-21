@@ -5,17 +5,17 @@ Author: Lindsay Groves, VUW, 2017.
 This is an interpreter for a simple while program language, as presented in
 lectures.  The assignment asks you to make several extensions to the language.
 
-You run a program using the run function, which takes a program and an
-initial store and returns the store resulting from executing the program, if
-it executes successfully.
+You run a program using the run function, which takes a program and an initial
+variable store and returns the variable store resulting from executing the
+program, if it executes successfully.
 
 There are some example programs and example stores at the end of this file, so
 you can try running some simple tests, e.g. run p1 s1 runs program p1 with
-store s1 (which doesn't do much!).
+variable store s1 (which doesn't do much!).
 
 > module While where
 
-Map is used to implement the store.
+Map is used to implement the store and table.
 
 > import Map
 
@@ -31,26 +31,37 @@ Variable names are assumed to be single characters.
 
 > type Var = Char
 
-Value are assumed to be integers/boolean/array.
+Procedure names are assumed to be strings
+
+> type PrcdrName = String
+
+Values are assumed to be integers/boolean/array.
 
 > data Val = Int Int
 >          | Bool Bool
 >          | Arr (Array Int Val) Int Type  -- 3 params: array, size, type
 >          deriving (Eq, Show)
 
-A program is a symbol table and a list of statements
+A procedure is a list of statements, and a symbol table to define the type of
+parameters. When invoking a procedure, often some parameters are passed in. A
+procedure can be invoked using the name.
 
-> type Prog = (SymTab, [Stmt])
+> type Prcdr = (SymTab, [Stmt])
 
-A statement can be a skip, assignment, array reference assignment, if, or do
-statement.
+A program is a symbol table, a procedure store, and a list of statements
+
+> type Prog = (SymTab, PrcdrStore, [Stmt])
+
+A statement can be a skip, assignment, array reference assignment, procedure
+invocation, if, or do statement.
 
 > data Stmt = Skip
 >           | Asgn Var Exp
 >           | AsgnArrRef Var Exp Exp
+>           | InvokePrcdr PrcdrName VarStore
 >           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]? If we use Prog, we have scoped variables.
 >           | Do Exp Prog
->           deriving (Show)
+>           deriving (Eq, Show)
 
 An expression can be a constant(int/bool), a variable, or a binary operator
 applied to two expressions, or a unary operator applied to one expression.
@@ -83,9 +94,13 @@ correct type (Int, Bool, or Array).
 >           | ArrayType Type
 >           deriving (Eq, Show)
 
-A store is a map from variables to values
+A variable store is a map from variables to values
 
-> type Store = Map Var Val
+> type VarStore = Map Var Val
+
+A procedure store is a map from procedure name to procedures
+
+> type PrcdrStore = Map PrcdrName Prcdr
 
 A symbol table is a map from varibales to types
 
@@ -96,10 +111,10 @@ A result is like Either, it's either a good result or an error with message
 > data Result a = OK a | Err String  -- TODO: not used so far
 
 run:
-To run a program with a given initial store, we first do a series of static
+To run a program with a given initial var store, we first do a series of static
 checking.
 
-1. The symbol table and the store matches each other.
+1. The symbol table and the variable store matches each other.
    1.1. All declared variables are initialised. (dclrdButNotInitVars)
    1.2. All initialised variables are declared. (intiButNotdclrdVars)
    1.3. Types are matched. (typeMismatchedVars)
@@ -108,18 +123,20 @@ checking.
 
 3. All variables used in expression have values initialised. (uninitVars)
 
-4. Array related check:
-   4.1. Array variable is not used alone, i.e. without an index. (arrVars)
-   4.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
-   4.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
-        (badAsgnArrRefs)
-   4.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
-   4.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+4. All procedure being invoked are defined in procedure store. (undefinedPrcdrs)
 
-5. All expressions used in assignments have correct type. The type of righthand
+5. Array related check:
+   5.1. Array variable is not used alone, i.e. without an index. (arrVars)
+   5.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   5.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+        (badAsgnArrRefs)
+   5.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   5.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+
+6. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
 
-6. Conditional expressions for If or Do statement are used correctly. This is
+7. Conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer/array values end up as condition expression of If or
    Do. (misConExps)
 
@@ -147,7 +164,7 @@ Array throwns exception if we access an element that is not there, and I don't
 know how to catch the exception in Haskel yet. An ideal solution would be:
 
   -- say we have an array `arr`, and it has no element at index 5
-  eval (ArrRef arr 5) store
+  eval (ArrRef arr 5) vStore
     | exceptionThrown "undefined array element" = NULL
     | otherwise                                 = arr ! 5
 
@@ -156,9 +173,10 @@ A lot of other languages uses default values for this operation, e.g. in Java
 gives back null for array of objects or 0 for array of primitive integers. But
 That solution brings lots of controversial discussions as well.
 
-If the programme is all good, then we just pass the programme and store to exec.
+If the programme is all good, then we just pass the programme and variable store
+to exec.
 
-> run :: Prog -> Store -> Store
+> run :: Prog -> VarStore -> VarStore
 > run p s
 >     -- these checks have really bad names, see the where clause for more info
 >   | not $ null check11
@@ -166,21 +184,23 @@ If the programme is all good, then we just pass the programme and store to exec.
 >   | not $ null check12
 >       = error ("\nInitialised but not declared Variable(s): " ++ show check12)
 >   | not $ null check13
->       = error ("\nMismatched type in store and symbol table: " ++ show check13)
+>       = error ("\nMismatched type in variable store and symbol table: " ++ show check13)
 >   | not $ null check2
 >       = error ("\nUndeclared Variable(s): " ++ show check2)
 >   | not $ null check3
 >       = error ("\nUninitialised Variable(s): " ++ show check3)
->   | not $ null check41
->       = error ("\nArray Variable(s) used alone: " ++ show check41)
->   | not $ null check423
->       = error ("\nType errors in array reference assignment(s): " ++ show check423)
->   | not $ null check445
->       = error ("\nType errors in array reference(s): " ++ show check445)
->   | not $ null check5
->       = error ("\nIncorrect Assignment(s): " ++ show check5)
+>   | not $ null check4
+>       = error ("\nUndefined procedure(s): " ++ show check4)
+>   | not $ null check51
+>       = error ("\nArray Variable(s) used alone: " ++ show check51)
+>   | not $ null check523
+>       = error ("\nType errors in array reference assignment(s): " ++ show check523)
+>   | not $ null check545
+>       = error ("\nType errors in array reference(s): " ++ show check545)
 >   | not $ null check6
->       = error ("\nIncorrect Expression(s): " ++ show check6)
+>       = error ("\nIncorrect Assignment(s): " ++ show check6)
+>   | not $ null check7
+>       = error ("\nIncorrect Expression(s): " ++ show check7)
 >   | otherwise
 >       = exec p s -- the non-error scenario
 >   where check11  = dclrdButNotInitVars p s    -- check no. 1.1
@@ -188,50 +208,79 @@ If the programme is all good, then we just pass the programme and store to exec.
 >         check13  = typeMismatchedVars p s     -- check no. 1.3
 >         check2   = undeclaredVars p           -- check no. 2
 >         check3   = uninitVars p s             -- check no. 3
->         check41  = arrVars p                  -- check no. 4.1
->         check423 = badAsgnArrRefs p           -- check no. 4.2 & 4.3
->         check445 = badArrRefs p               -- check no. 4.4 & 4.5
->         check5   = incorrectAsgnmts p         -- check no. 5
->         check6   = misConExps p               -- check no. 6
+>         check4   = undefinedPrcdrs p          -- check no. 4
+>         check51  = arrVars p                  -- check no. 5.1
+>         check523 = badAsgnArrRefs p           -- check no. 5.2 & 5.3
+>         check545 = badArrRefs p               -- check no. 5.4 & 5.5
+>         check6   = incorrectAsgnmts p         -- check no. 6
+>         check7   = misConExps p               -- check no. 7
 
 exec:
 To execute a program, we just execute each statement in turn, passing the
 resulting state to the next statement at each step.
 
-> exec :: Prog -> Store -> Store
-> exec (_, []) store            = store
-> exec (vars, stmt : rest) store = exec (vars, rest) (exec' stmt store)
+> exec :: Prog -> VarStore -> VarStore
+> exec (_, _, []) vStore = vStore
+> exec (vars, pStore, stmt : rest) vStore
+>   = exec (vars, pStore, rest) (exec' stmt vStore pStore)
 
 exec':
 Execute a single statement, according to its semantics
 
-> exec' :: Stmt -> Store -> Store
+> exec' :: Stmt -> VarStore -> PrcdrStore -> VarStore
 
-> exec' Skip store = store
+> exec' Skip vStore _ = vStore
 
-> exec' (Asgn var expression) store = setVal var (eval expression store) store
+> exec' (Asgn var expression) vStore _ = setVal var (eval expression vStore) vStore
 
-> exec' (AsgnArrRef var idxExp valExp) store = setVal var newVal store
->   where (Arr oldArray size tipe) = getVal var store
->         (Int idx)                = eval idxExp store
->         newVal                   = Arr (oldArray // [(idx, eval valExp store)]) size tipe
+> exec' (AsgnArrRef var idxExp valExp) vStore _ = setVal var newVal vStore
+>   where (Arr oldArray size tipe) = getVal var vStore
+>         (Int idx)                = eval idxExp vStore
+>         newVal                   = Arr (oldArray // [(idx, eval valExp vStore)]) size tipe
 
-> exec' (If cond thenPart elsePart) store =
+to execute a procedure, we merge parameters into global variable stores, and run
+the procedure as a programme. After the procedure is finished, we remove
+variables that were parameters, because local variables shouldn't go global.
+
+> exec' (InvokePrcdr prc params) vStore pStore
+>   = restoreShadowedParams postPrcdrVarStore vStore params
+>     where (paramTab, stmts) = getVal prc pStore
+>           mergedVStore      = merge vStore params
+>           postPrcdrVarStore = exec (paramTab, pStore, stmts) mergedVStore
+
+> exec' (If cond thenPart elsePart) vStore _ =
 >   if b
->   then exec thenPart store
->   else exec elsePart store
->   where Bool b = eval cond store
+>   then exec thenPart vStore
+>   else exec elsePart vStore
+>   where Bool b = eval cond vStore
 
-> exec' (Do cond body) store =
+> exec' (Do cond body) vStore pStore =
 >   if not b
->   then store
->   else exec' (Do cond body) (exec body store)
->   where Bool b = eval cond store
+>   then vStore
+>   else exec' (Do cond body) (exec body vStore) pStore
+>   where Bool b = eval cond vStore
+
+restoreShadowedParams:
+TL'DR: deal with local variables.
+
+After executing a procedure, the store will be changed. This method restores
+global variables that are shadowed by parameters, and remove variables that are
+in parameters but not in original store.
+
+> restoreShadowedParams :: Eq a => Map a b -> Map a b -> Map a b -> Map a b
+> restoreShadowedParams [] _ _ = []
+> restoreShadowedParams ((k,v) : pairs) originStore params
+>   | hasKey k originStore && hasKey k params       = (k, getVal k originStore) : restoreShadowedParams pairs originStore params
+>   | hasKey k originStore && not (hasKey k params) = (k, v) : restoreShadowedParams pairs originStore params
+>   | not (hasKey k originStore) && hasKey k params = restoreShadowedParams pairs originStore params
+>   | otherwise                                     = error "post-procedure store should not have more variables than original store"
+
+
 
 eval:
 Evaluate an expression, according to its type
 
-> eval :: Exp -> Store -> Val
+> eval :: Exp -> VarStore -> Val
 
 > eval (ConstInt i)  _ = Int i
 > eval (ConstBool b) _ = Bool b
@@ -289,7 +338,7 @@ detected statically or in runtime.
 
 What we need to statically check:
 
-1. The symbol table and the store matches each other.
+1. The symbol table and the variable store matches each other.
    1.1. All declared variables are initialised. (dclrdButNotInitVars)
    1.2. All initialised variables are declared. (intiButNotdclrdVars)
    1.3. Types are matched. (typeMismatchedVars)
@@ -298,63 +347,60 @@ What we need to statically check:
 
 3. All variables used in expression have values initialised. (uninitVars)
 
-4. Array related check:
-   4.1. Array variable is not used alone, i.e. without an index. (arrVars)
-   4.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
-   4.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
-        (badAsgnArrRefs)
-   4.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
-   4.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+4. All procedure being invoked are defined in procedure store. (undefinedPrcdrs)
 
-5. All expressions used in assignments have correct type. The type of righthand
+5. The parameters passed in matches the defined type. (incorrectParamInvocs)
+   This check is essentially check no. 1 applied on procedures.
+
+6. Array related check:
+   6.1. Array variable is not used alone, i.e. without an index. (arrVars)
+   6.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   6.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+        (badAsgnArrRefs)
+   6.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   6.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+
+7. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
 
-6. Conditional expressions for If or Do statement are used correctly. This is
+8. Conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer/array values end up as condition expression of If or
    Do. (misConExps)
 
 
 dclrdButNotInitVars:
-Compare the symbol table and the store, and find out all variables that is
-declared but not initialised (exists in symbol table but not in store).
+Compare the symbol table and the variable store, and find out all variables that
+is declared but not initialised (exists in symbol table but not in variable
+store).
 (naming is hard....)
 
-> dclrdButNotInitVars :: Prog -> Store -> [Var]
-> dclrdButNotInitVars (t, _) s
+> dclrdButNotInitVars :: Prog -> VarStore -> [Var]
+> dclrdButNotInitVars (t, _, _) s
 >   = filter (`notElem` varsStore) varsTable
->     where varsStore = map fst s
->           varsTable = map fst t
+>     where varsStore = keys s
+>           varsTable = keys t
 
 intiButNotdclrdVars:
-Compare the symbol table and the store, and find out all variables that is
-initialised but not declared (exists in store but not in symbol table).
+Compare the symbol table and the variable store, and find out all variables that
+is initialised but not declared (exists in variable store but not in symbol
+table).
 
-> intiButNotdclrdVars :: Prog -> Store -> [Var]
-> intiButNotdclrdVars (t, _) s
+> intiButNotdclrdVars :: Prog -> VarStore -> [Var]
+> intiButNotdclrdVars (t, _, _) s
 >   = filter (`notElem` varsTable) varsStore
->     where varsStore = map fst s
->           varsTable = map fst t
+>     where varsStore = keys s
+>           varsTable = keys t
 
 typeMismatchedVars:
-Compare the symbol table and the store, and find out all variables that have
-mismatched type.
-If we run the checks in order, we can guarantee that symbol table and store
-have same variables now (by same I mean the name of it). We only need to check
-the type now.
+Compare the symbol table and the variable store, and find out all variables that
+have mismatched type.
+If we run the checks in order, we can guarantee that symbol table and variable
+store have same variables now (by same I mean the name of it). We only need to
+check the type now.
 
-> typeMismatchedVars :: Prog -> Store -> [Var]
-> typeMismatchedVars (table, _) store
->   = map fst $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
-
-isSameType:
-A helper function to check if two variables have same types in store and in
-symbol table
-
-> isSameType :: Val -> Type -> Bool
-> isSameType (Int _)       IntType         = True
-> isSameType (Bool _)      BoolType        = True
-> isSameType (Arr _ _ tp1) (ArrayType tp2) = tp1 == tp2
-> isSameType _             _               = False
+> typeMismatchedVars :: Prog -> VarStore -> [Var]
+> typeMismatchedVars (table, _, _) vStore
+>   = keys $ filter (\(k,v) -> not $ isSameType v (getVal k table)) vStore
 
 undeclaredVars:
 Find out all the variables that are used but not declared in a programme.
@@ -367,31 +413,39 @@ undeclaredVarsProg:
 Find out all the variables that are used but not declared in a programme.
 
 > undeclaredVarsProg :: Prog -> [Var]
-> undeclaredVarsProg (_, []) = []
-> undeclaredVarsProg (symTab, stmt : stmts)
->   = undeclaredVarsStmt (symTab, stmt) ++ undeclaredVarsProg (symTab, stmts)
+> undeclaredVarsProg (_, _, []) = []
+> undeclaredVarsProg (symTab, pStore, stmt : stmts)
+>   = undeclaredVarsStmt (symTab, pStore, stmt) ++ undeclaredVarsProg (symTab, pStore, stmts)
 
 undeclaredVarsStmt:
 Find out all the variables that are used but not declared in a statement.
 
-> undeclaredVarsStmt :: (SymTab, Stmt) -> [Var]
+> undeclaredVarsStmt :: (SymTab, PrcdrStore, Stmt) -> [Var]
 
-> undeclaredVarsStmt (_, Skip) = []
+> undeclaredVarsStmt (_, _, Skip) = []
 
-> undeclaredVarsStmt (symTab, Asgn v e)
+> undeclaredVarsStmt (symTab, _, Asgn v e)
 >   | hasKey v symTab = rest
 >   | otherwise       = v : rest
 >   where rest = undeclaredVarsExp (symTab, e)
 
-> undeclaredVarsStmt (symTab, AsgnArrRef var idxExp valExp)
+> undeclaredVarsStmt (symTab, _, AsgnArrRef var idxExp valExp)
 >   | hasKey var symTab = rest
 >   | otherwise         = var : rest
 >   where rest = undeclaredVarsExp (symTab, idxExp) ++ undeclaredVarsExp (symTab, valExp)
 
-> undeclaredVarsStmt (symTab, If e c p)
+to check a procedure, we basically treat it as a programme, with parameters
+merged into glabal variable store.
+
+> undeclaredVarsStmt (symTab, pStore, InvokePrcdr prcName _)
+>   = undeclaredVarsStmt (mergedSymTab, pStore, stmt) ++ undeclaredVarsProg (mergedSymTab, pStore, stmts)
+>     where mergedSymTab             = merge symTab paramTab
+>           (paramTab, stmt : stmts) = getVal prcName pStore
+
+> undeclaredVarsStmt (symTab, _, If e c p)
 >   = undeclaredVarsExp (symTab, e) ++ undeclaredVarsProg c ++ undeclaredVarsProg p
 
-> undeclaredVarsStmt (symTab, Do e p)
+> undeclaredVarsStmt (symTab, _, Do e p)
 >   = undeclaredVarsExp (symTab, e) ++ undeclaredVarsProg p
 
 undeclaredVarsExp:
@@ -417,60 +471,132 @@ Find out all the variables that are used but not declared in an expression.
 > undeclaredVarsExp (symTab, Una _ e) = undeclaredVarsExp (symTab, e)
 
 uninitVars:
-Given a store, find out all variables used but not initialised in a programme.
+Given a variable store, find out all variables used but not initialised in a
+programme.
 (This wrapper method get rid of duplicates)
 
-> uninitVars :: Prog -> Store -> [Var]
+> uninitVars :: Prog -> VarStore -> [Var]
 > uninitVars p s = nub $ uninitVarsProg p s
 
 uninitVarsProg:
-Given a store, find out all variables used but not initialised in a programme.
+Given a variable store, find out all variables used but not initialised in a
+programme.
 
-> uninitVarsProg :: Prog -> Store -> [Var]
-> uninitVarsProg (_, []) _ = []
-> uninitVarsProg (symTab, stmt : stmts) store
->   = uninitVarsStmt stmt store ++ uninitVarsProg (symTab, stmts) store
+> uninitVarsProg :: Prog -> VarStore -> [Var]
+> uninitVarsProg (_, _, []) _ = []
+> uninitVarsProg (_, pStore, stmt : stmts) vStore
+>   = uninitVarsStmt stmt vStore pStore ++ uninitVarsProg (emptyMap, pStore, stmts) vStore
 
 uninitVarsStmt:
-Given a store, find out all variables used but not initialised in a statement.
+Given a variable store, find out all variables used but not initialised in a
+statement.
 
-> uninitVarsStmt :: Stmt -> Store -> [Var]
+> uninitVarsStmt :: Stmt -> VarStore -> PrcdrStore -> [Var]
 
-> uninitVarsStmt Skip _ = []
+> uninitVarsStmt Skip _ _ = []
 
-> uninitVarsStmt (Asgn _ e) store = uninitVarsExp e store
+> uninitVarsStmt (Asgn _ e) vStore _ = uninitVarsExp e vStore
 
-> uninitVarsStmt (AsgnArrRef _ idxExp valExp) store
->   = uninitVarsExp idxExp store ++ uninitVarsExp valExp store
+> uninitVarsStmt (AsgnArrRef _ idxExp valExp) vStore _
+>   = uninitVarsExp idxExp vStore ++ uninitVarsExp valExp vStore
 
-> uninitVarsStmt (If e c p) store
->   = uninitVarsExp e store ++ uninitVarsProg c store ++ uninitVarsProg p store
+> uninitVarsStmt (InvokePrcdr prcName params) vStore pStore
+>   = uninitVarsStmt stmt mergedVarStore pStore ++ uninitVarsProg (emptyMap, pStore, stmts) mergedVarStore
+>     where mergedVarStore    = merge vStore params
+>           (_, stmt : stmts) = getVal prcName pStore
 
-> uninitVarsStmt (Do e p) store = uninitVarsExp e store ++ uninitVarsProg p store
+> uninitVarsStmt (If e c p) vStore _
+>   = uninitVarsExp e vStore ++ uninitVarsProg c vStore ++ uninitVarsProg p vStore
+
+> uninitVarsStmt (Do e p) vStore _ = uninitVarsExp e vStore ++ uninitVarsProg p vStore
 
 uninitVarsExp:
-Given a store, find out all variables used but not initialised in an expression.
+Given a variable store, find out all variables used but not initialised in an
+expression.
 
-> uninitVarsExp :: Exp -> Store -> [Var]
+> uninitVarsExp :: Exp -> VarStore -> [Var]
 
 > uninitVarsExp (ConstInt _) _ = []
 > uninitVarsExp (ConstBool _) _ = []
 
-> uninitVarsExp (Var v) store
->   | hasKey v store = []
+> uninitVarsExp (Var v) vStore
+>   | hasKey v vStore = []
 >   | otherwise      = [v]
 
-> uninitVarsExp (ArrRef v idxExp) store
->   | hasKey v store = rest
+> uninitVarsExp (ArrRef v idxExp) vStore
+>   | hasKey v vStore = rest
 >   | otherwise      = v : rest
->   where rest = uninitVarsExp idxExp store
+>   where rest = uninitVarsExp idxExp vStore
 
-> uninitVarsExp (Bin _ e e') store = uninitVarsExp e store ++ uninitVarsExp e' store
+> uninitVarsExp (Bin _ e e') vStore = uninitVarsExp e vStore ++ uninitVarsExp e' vStore
 
-> uninitVarsExp (Una _ e) store = uninitVarsExp e store
+> uninitVarsExp (Una _ e) vStore = uninitVarsExp e vStore
+
+undefinedPrcdrs:
+Find out all procedures used but not defined in the procedure store.
+(This wrapper method get rid of duplicates)
+
+> undefinedPrcdrs :: Prog -> [PrcdrName]
+> undefinedPrcdrs p = nub $ undefinedPrcdrsProg p
+
+undefinedPrcdrsProg:
+Given a programme, Find out all procedures used but not defined in the procedure
+store.
+
+> undefinedPrcdrsProg :: Prog -> [PrcdrName]
+> undefinedPrcdrsProg (_, _, []) = []
+> undefinedPrcdrsProg (symTab, pStore, stmt : stmts)
+>    = undefinedPrcdrsStmt (pStore, stmt) ++ undefinedPrcdrsProg (symTab, pStore, stmts)
+
+undefinedPrcdrsStmt:
+Given a statement, Find out all procedures used but not defined in the procedure
+store.
+
+> undefinedPrcdrsStmt :: (PrcdrStore, Stmt) -> [PrcdrName]
+> undefinedPrcdrsStmt (pStore, InvokePrcdr prcName _)
+>   | hasKey prcName pStore = []
+>   | otherwise             = [prcName]
+> undefinedPrcdrsStmt (_, _) = []
+
+incorrectParamInvocs:
+Find out all The procedure invocations with parameters passed in mismatching
+the defined type.
+(This wrapper method get rid of duplicates)
+
+> incorrectParamInvocs :: Prog -> [Stmt]
+> incorrectParamInvocs p = nub $ incorrectParamInvocsProg p
+
+incorrectParamInvocsProg:
+Given a programme, find out all The procedure invocations with parameters passed
+in mismatching the defined type.
+
+> incorrectParamInvocsProg :: Prog -> [Stmt]
+> incorrectParamInvocsProg (_, _, []) = []
+> incorrectParamInvocsProg (symTab, pStore, stmt : stmts)
+>   = incorrectParamInvocsStmt (symTab, pStore, stmt) ++ incorrectParamInvocsProg (symTab, pStore, stmts)
+
+incorrectParamInvocsStmt:
+Given a statement, find out all The procedure invocations with parameters passed
+in mismatching the defined type.
+
+> incorrectParamInvocsStmt :: (SymTab, PrcdrStore, Stmt) -> [Stmt]
+> incorrectParamInvocsStmt (_, pStore, s@(InvokePrcdr prcName params))
+>   | check11 || check12 || check13 = [s]
+>   | otherwise                     = []
+>     where (symTab, stmts) = getVal prcName pStore
+>           check11 = not $ null $ dclrdButNotInitVars (symTab, pStore, stmts) params
+>           check12 = not $ null $ intiButNotdclrdVars (symTab, pStore, stmts) params
+>           check13 = not $ null $ typeMismatchedVars (symTab, pStore, stmts) params
+
+> incorrectParamInvocsStmt (_, _, If _ c p)
+>   = incorrectParamInvocsProg c ++ incorrectParamInvocsProg p
+
+> incorrectParamInvocsStmt (_, _, Do _ p) = incorrectParamInvocsProg p
+
+> incorrectParamInvocsStmt (_, _, _) = []
 
 arrVars:
-Checks whether an array variable is used alone, i.e. without an index.
+Check whether an array variable is used alone, i.e. without an index.
 (This wrapper method get rid of duplicates)
 
 > arrVars :: Prog -> [Var]
@@ -480,26 +606,31 @@ arrVarsProg:
 Checks in programme whether an array variable is used alone, i.e. without an index.
 
 > arrVarsProg :: Prog -> [Var]
-> arrVarsProg (_, []) = []
-> arrVarsProg (symTab, stmt : stmts)
->   = arrVarsStmt (symTab, stmt) ++ arrVarsProg (symTab, stmts)
+> arrVarsProg (_, _, []) = []
+> arrVarsProg (symTab, pStore, stmt : stmts)
+>   = arrVarsStmt (symTab, pStore, stmt) ++ arrVarsProg (symTab, pStore, stmts)
 
 arrVarsStmt:
 Checks in statement whether an array variable is used alone, i.e. without an index.
 
-> arrVarsStmt :: (SymTab, Stmt) -> [Var]
+> arrVarsStmt :: (SymTab, PrcdrStore, Stmt) -> [Var]
 
-> arrVarsStmt (_, Skip) = []
+> arrVarsStmt (_, _, Skip) = []
 
-> arrVarsStmt (symTab, Asgn _ e) = arrVarsExp (symTab, e)
+> arrVarsStmt (symTab, _, Asgn _ e) = arrVarsExp (symTab, e)
 
-> arrVarsStmt (symTab, AsgnArrRef _ idxExp valExp)
+> arrVarsStmt (symTab, _, AsgnArrRef _ idxExp valExp)
 >   = arrVarsExp (symTab, idxExp) ++ arrVarsExp (symTab, valExp)
 
-> arrVarsStmt (symTab, If e c p)
+> arrVarsStmt (symTab, pStore, InvokePrcdr prcName _)
+>   = arrVarsStmt (mergedSymTab, pStore, stmt) ++ arrVarsProg (mergedSymTab, pStore, stmts)
+>     where mergedSymTab             = merge symTab paramTab
+>           (paramTab, stmt : stmts) = getVal prcName pStore
+
+> arrVarsStmt (symTab, _, If e c p)
 >   = arrVarsExp (symTab, e) ++ arrVarsProg c ++ arrVarsProg p
 
-> arrVarsStmt (symTab, Do e p)
+> arrVarsStmt (symTab, _, Do e p)
 >   = arrVarsExp (symTab, e) ++ arrVarsProg p
 
 arrVarsExp:
@@ -528,17 +659,16 @@ Checks whether variables and index expressions have incorrect type in
 
 > badAsgnArrRefs :: Prog -> [Stmt]
 
-> badAsgnArrRefs (_, []) = []
+> badAsgnArrRefs (_, _, []) = []
 
-> badAsgnArrRefs (symTab, s@(AsgnArrRef v idxExp _) : stmts)
+> badAsgnArrRefs (symTab, pStore, s@(AsgnArrRef v idxExp _) : stmts)
 >   | hasKey v symTab && (getVal v symTab == IntType)  = s : rest
 >   | hasKey v symTab && (getVal v symTab == BoolType) = s : rest
 >   | expType idxExp symTab /= IntType = s : rest
 >   | otherwise = rest
->   where rest = badAsgnArrRefs (symTab, stmts)
+>   where rest = badAsgnArrRefs (symTab, pStore, stmts)
 
-
-> badAsgnArrRefs (symTab, _ : stmts) = badAsgnArrRefs (symTab, stmts)
+> badAsgnArrRefs (symTab, pStore, _ : stmts) = badAsgnArrRefs (symTab, pStore, stmts)
 
 badArrRefs:
 Checks whether variables and index expressions have incorrect type in
@@ -553,27 +683,32 @@ Checks whether variables and index expressions have incorrect type in
 (ArrRef Var Exp) in a programme
 
 > badArrRefsProg :: Prog -> [Exp]
-> badArrRefsProg (_, []) = []
-> badArrRefsProg (symTab, stmt : stmts)
->   = badArrRefsStmt (symTab, stmt) ++ badArrRefsProg (symTab, stmts)
+> badArrRefsProg (_, _, []) = []
+> badArrRefsProg (symTab, pStore, stmt : stmts)
+>   = badArrRefsStmt (symTab, pStore, stmt) ++ badArrRefsProg (symTab, pStore, stmts)
 
 badArrRefsStmt:
 Checks whether variables and index expressions have incorrect type in
 (ArrRef Var Exp) in a Statement
 
-> badArrRefsStmt :: (SymTab, Stmt) -> [Exp]
+> badArrRefsStmt :: (SymTab, PrcdrStore, Stmt) -> [Exp]
 
-> badArrRefsStmt (_, Skip) = []
+> badArrRefsStmt (_, _, Skip) = []
 
-> badArrRefsStmt (symTab, Asgn _ e) = badArrRefsExp (symTab, e)
+> badArrRefsStmt (symTab, _, Asgn _ e) = badArrRefsExp (symTab, e)
 
-> badArrRefsStmt (symTab, AsgnArrRef _ idxExp valExp)
+> badArrRefsStmt (symTab, _, AsgnArrRef _ idxExp valExp)
 >   = badArrRefsExp (symTab, idxExp) ++ badArrRefsExp (symTab, valExp)
 
-> badArrRefsStmt (symTab, If e c p)
+> badArrRefsStmt (symTab, pStore, InvokePrcdr prcName _)
+>   = badArrRefsStmt (mergedSymTab, pStore, stmt) ++ badArrRefsProg (mergedSymTab, pStore, stmts)
+>     where mergedSymTab             = merge symTab paramTab
+>           (paramTab, stmt : stmts) = getVal prcName pStore
+
+> badArrRefsStmt (symTab, _, If e c p)
 >   = badArrRefsExp (symTab, e) ++ badArrRefsProg c ++ badArrRefsProg p
 
-> badArrRefsStmt (symTab, Do e p) = badArrRefsExp (symTab, e) ++ badArrRefsProg p
+> badArrRefsStmt (symTab, _, Do e p) = badArrRefsExp (symTab, e) ++ badArrRefsProg p
 
 badArrRefsExp:
 Checks whether variables and index expressions have incorrect type in
@@ -597,29 +732,35 @@ Checks whether variables and index expressions have incorrect type in
 > badArrRefsExp (symTab, Una _ e) = badArrRefsExp (symTab, e)
 
 incorrectAsgnmts:
-Find out all assignments that have unmatching types on two sides in a programme.
+Find out all assignments that have mismatching types on two sides in a programme.
 
 > incorrectAsgnmts :: Prog -> [Stmt]
 
-> incorrectAsgnmts (_, []) = []
+> incorrectAsgnmts (_, _, []) = []
 
-> incorrectAsgnmts (symTab, Skip : stmts) = incorrectAsgnmts (symTab, stmts)
+> incorrectAsgnmts (symTab, pStore, Skip : stmts) = incorrectAsgnmts (symTab, pStore, stmts)
 
-> incorrectAsgnmts (symTab, s@(Asgn v e) : stmts)
+> incorrectAsgnmts (symTab, pStore, s@(Asgn v e) : stmts)
 >   | hasKey v symTab && (getVal v symTab /= expType e symTab) = s : rest
 >   | otherwise = rest
->   where rest = incorrectAsgnmts (symTab, stmts)
+>   where rest = incorrectAsgnmts (symTab, pStore, stmts)
 
-> incorrectAsgnmts (symTab, s@(AsgnArrRef v _ valExp) : stmts)
+> incorrectAsgnmts (symTab, pStore, s@(AsgnArrRef v _ valExp) : stmts)
 >   | hasKey v symTab && (expType (ArrRef v (ConstInt 0)) symTab /= expType valExp symTab) = s : rest
 >   | otherwise = rest
->   where rest = incorrectAsgnmts (symTab, stmts)
+>   where rest = incorrectAsgnmts (symTab, pStore, stmts)
 
-> incorrectAsgnmts (symTab, If _ c p : stmts)
->   = incorrectAsgnmts c ++ incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
+> incorrectAsgnmts (symTab, pStore, InvokePrcdr prcName _ : stmts)
+>   = incorrectAsgnmts (mergedSymTab, pStore, prcStmts) ++ rest
+>     where mergedSymTab         = merge symTab paramTab
+>           (paramTab, prcStmts) = getVal prcName pStore
+>           rest                 = incorrectAsgnmts (symTab, pStore, stmts)
 
-> incorrectAsgnmts (symTab, Do _ p : stmts)
->   = incorrectAsgnmts p ++ incorrectAsgnmts (symTab, stmts)
+> incorrectAsgnmts (symTab, pStore, If _ c p : stmts)
+>   = incorrectAsgnmts c ++ incorrectAsgnmts p ++ incorrectAsgnmts (symTab, pStore, stmts)
+
+> incorrectAsgnmts (symTab, pStore, Do _ p : stmts)
+>   = incorrectAsgnmts p ++ incorrectAsgnmts (symTab, pStore, stmts)
 
 misConExps:
 Find out all the places where integer valued expressions are used as condition
@@ -627,19 +768,25 @@ in If or Do.
 
 > misConExps :: Prog -> [Exp]
 
-> misConExps (_, []) = []
+> misConExps (_, _, []) = []
 
-> misConExps (symTab, If e c p : stmts)
+> misConExps (symTab, pStore, InvokePrcdr prcName _ : stmts)
+>   = misConExps (mergedSymTab, pStore, prcStmts) ++ rest
+>     where mergedSymTab         = merge symTab paramTab
+>           (paramTab, prcStmts) = getVal prcName pStore
+>           rest                 = misConExps (symTab, pStore, stmts)
+
+> misConExps (symTab, pStore, If e c p : stmts)
 >   | expType e symTab /= BoolType = e : rest
 >   | otherwise                    = rest
->   where rest = misConExps c ++ misConExps p ++ misConExps (symTab, stmts)
+>   where rest = misConExps c ++ misConExps p ++ misConExps (symTab, pStore, stmts)
 
-> misConExps (symTab, Do e p : stmts)
+> misConExps (symTab, pStore, Do e p : stmts)
 >   | expType e symTab /= BoolType = e : rest
 >   | otherwise                    = rest
->   where rest = misConExps p ++ misConExps (symTab, stmts)
+>   where rest = misConExps p ++ misConExps (symTab, pStore, stmts)
 
-> misConExps (symTab, _ : stmts) = misConExps (symTab, stmts)
+> misConExps (symTab, pStore, _ : stmts) = misConExps (symTab, pStore, stmts)
 
 expType:
 Find out the type of an expression
@@ -679,6 +826,16 @@ Find out the type of an unary operation
 > unaOpType _ BoolType = BoolType
 > unaOpType _ _        = error "Illegal application"
 
+isSameType:
+A helper function to check if two variables have same types in variable store
+and in symbol table
+
+> isSameType :: Val -> Type -> Bool
+> isSameType (Int _)       IntType         = True
+> isSameType (Bool _)      BoolType        = True
+> isSameType (Arr _ _ tp1) (ArrayType tp2) = tp1 == tp2
+> isSameType _             _               = False
+
 ====================================================
 
 Some sample expressions
@@ -698,13 +855,13 @@ Some sample expressions
 
 Some sample stores
 
-> s1 :: Store
+> s1 :: VarStore
 > s1 = []
-> s2 :: Store
+> s2 :: VarStore
 > s2 = [('x', Int 1)]
-> s3 :: Store
+> s3 :: VarStore
 > s3 = [('x', Int 1), ('y', Int 2)]
-> s4 :: Store
+> s4 :: VarStore
 > s4 = [('x', Bool True), ('y', Bool False), ('z', Bool True)]
 
 some sample symbol tables
@@ -721,27 +878,27 @@ some sample symbol tables
 Some sample programs
 
 > p1 :: Prog
-> p1 = (t1, [Skip])
+> p1 = (t1, pStore1, [Skip])
 > p2 :: Prog
-> p2 = (t1, [Skip, Skip])
+> p2 = (t1, pStore1, [Skip, Skip])
 > p3 :: Prog
-> p3 = (t1, [Asgn 'x' e1])
+> p3 = (t1, pStore1, [Asgn 'x' e1])
 > p4 :: Prog
-> p4 = (t1, [Asgn 'x' (Var 'x')])
+> p4 = (t1, pStore1, [Asgn 'x' (Var 'x')])
 > p5 :: Prog
-> p5 = (t3, [Asgn 'x' (Var 'y')])
+> p5 = (t3, pStore1, [Asgn 'x' (Var 'y')])
 > p6 :: Prog
-> p6 = (t3, [Asgn 'x' (Bin Plus (Var 'x') (ConstInt 1))])
+> p6 = (t3, pStore1, [Asgn 'x' (Bin Plus (Var 'x') (ConstInt 1))])
 > p7 :: Prog
-> p7 = (t3, [Asgn 'x' e1, Asgn 'y' e2,
->       If (Bin Eq (Var 'x') (Var 'y')) ([], [Asgn 'z' e1]) ([], [Asgn 'z' e2])])
+> p7 = (t3, pStore1, [Asgn 'x' e1, Asgn 'y' e2,
+>       If (Bin Eq (Var 'x') (Var 'y')) ([], [], [Asgn 'z' e1]) ([], [], [Asgn 'z' e2])])
 > p8 :: Prog
-> p8 = (t3, [Asgn 'i' e1, Asgn 's' e0,
->       Do (Bin Lt (Var 'i') (Var 'n')) ([], [Asgn 's' (Bin Plus (Var 's') e1), Asgn 'i' e5])])
+> p8 = (t3, pStore1, [Asgn 'i' e1, Asgn 's' e0,
+>       Do (Bin Lt (Var 'i') (Var 'n')) ([], [], [Asgn 's' (Bin Plus (Var 's') e1), Asgn 'i' e5])])
 
 My test:
 
-> s9 :: Store
+> s9 :: VarStore
 > s9 = [
 >        ('x', Bool True),
 >        ('y', Bool False),
@@ -760,13 +917,29 @@ My test:
 >        -- ('a', ArrayType BoolType)
 >      ]
 
+> pStore1 :: PrcdrStore
+> pStore1 = [("method",
+>            ([
+>               ('x', BoolType),
+>               ('y', IntType)
+>             ],
+>             [
+>                Asgn 'x' (ConstBool True),
+>                Asgn 'y' (Bin Plus (ConstInt 500) (ConstInt 300))
+>             ])
+>            )]
+
+> -- TODO!!! Test!!!
+
 > p9 :: Prog
 > p9 = (
 >   t9,
+>   pStore1,
 >   [
 >     Asgn 'x' (Una Not (Var 'y')),
 >     Asgn 'm' (Var 'x'),
 >     AsgnArrRef 'z' (ConstInt 0) (Bin Plus (ArrRef 'z' (ConstInt 2)) (ConstInt 10)),
->     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (ConstInt 5)]) (t9, [Asgn 'n' (ConstInt 0)]),
->     Do (Bin Gt (Var 'n') (ConstInt 1)) (t9, [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))])
+>     If (Bin And (Var 'x') (Var 'y')) (t9, [], [Asgn 'm' (ConstInt 5)]) (t9, [], [Asgn 'n' (ConstInt 0)]),
+>     Do (Bin Gt (Var 'n') (ConstInt 1)) (t9, [], [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))]),
+>     InvokePrcdr "method" s9
 >   ])

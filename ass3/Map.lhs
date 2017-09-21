@@ -32,3 +32,24 @@ delKey :: a -> Map a b -> Map a b
 
 > delKey :: Eq a => a -> Map a b -> Map a b
 > delKey k = filter (\(x,_) -> x /= k)
+
+merge:
+merge the second map into the first map. A pair with new key will be added, and
+a pair with existing key will overwrite the old pair.
+
+> merge :: Eq a => Map a b -> Map a b -> Map a b
+> merge mapa []               = mapa
+> merge mapa ((k, v) : pairs) = merge (setVal k v mapa) pairs
+
+delMap:
+remove any pair whose key occurs in the second map.
+
+> delMap :: Eq a => Map a b -> Map a b -> Map a b
+> delMap mapa []               = mapa
+> delMap mapa ((k, _) : pairs) = delMap (delKey k mapa) pairs
+
+keys:
+get all the keys
+
+> keys :: Eq a => Map a b -> [a]
+> keys = map fst

@@ -31,7 +31,7 @@ Variable names are assumed to be single characters.
 
 > type Var = Char
 
-Value are assumed to be integers/boolean/array.
+Values are assumed to be integers/boolean/array.
 
 > data Val = Int Int
 >          | Bool Bool
@@ -322,8 +322,8 @@ declared but not initialised (exists in symbol table but not in store).
 > dclrdButNotInitVars :: Prog -> Store -> [Var]
 > dclrdButNotInitVars (t, _) s
 >   = filter (`notElem` varsStore) varsTable
->     where varsStore = map fst s
->           varsTable = map fst t
+>     where varsStore = keys s
+>           varsTable = keys t
 
 intiButNotdclrdVars:
 Compare the symbol table and the store, and find out all variables that is
@@ -332,8 +332,8 @@ initialised but not declared (exists in store but not in symbol table).
 > intiButNotdclrdVars :: Prog -> Store -> [Var]
 > intiButNotdclrdVars (t, _) s
 >   = filter (`notElem` varsTable) varsStore
->     where varsStore = map fst s
->           varsTable = map fst t
+>     where varsStore = keys s
+>           varsTable = keys t
 
 typeMismatchedVars:
 Compare the symbol table and the store, and find out all variables that have
@@ -344,17 +344,7 @@ the type now.
 
 > typeMismatchedVars :: Prog -> Store -> [Var]
 > typeMismatchedVars (table, _) store
->   = map fst $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
-
-isSameType:
-A helper function to check if two variables have same types in store and in
-symbol table
-
-> isSameType :: Val -> Type -> Bool
-> isSameType (Int _)       IntType         = True
-> isSameType (Bool _)      BoolType        = True
-> isSameType (Arr _ _ tp1) (ArrayType tp2) = tp1 == tp2
-> isSameType _             _               = False
+>   = keys $ filter (\(k,v) -> not $ isSameType v (getVal k table)) store
 
 undeclaredVars:
 Find out all the variables that are used but not declared in a programme.
@@ -597,7 +587,7 @@ Checks whether variables and index expressions have incorrect type in
 > badArrRefsExp (symTab, Una _ e) = badArrRefsExp (symTab, e)
 
 incorrectAsgnmts:
-Find out all assignments that have unmatching types on two sides in a programme.
+Find out all assignments that have mismatching types on two sides in a programme.
 
 > incorrectAsgnmts :: Prog -> [Stmt]
 
@@ -678,6 +668,16 @@ Find out the type of an unary operation
 > unaOpType :: UOp -> Type -> Type
 > unaOpType _ BoolType = BoolType
 > unaOpType _ _        = error "Illegal application"
+
+isSameType:
+A helper function to check if two variables have same types in store and in
+symbol table
+
+> isSameType :: Val -> Type -> Bool
+> isSameType (Int _)       IntType         = True
+> isSameType (Bool _)      BoolType        = True
+> isSameType (Arr _ _ tp1) (ArrayType tp2) = tp1 == tp2
+> isSameType _             _               = False
 
 ====================================================
 
