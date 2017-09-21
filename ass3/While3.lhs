@@ -119,24 +119,27 @@ checking.
    1.2. All initialised variables are declared. (intiButNotdclrdVars)
    1.3. Types are matched. (typeMismatchedVars)
 
-2. All variables used are declared with a type. (undeclaredVars)
+2. All procedure being invoked are defined in procedure store. (undefinedPrcdrs)
 
-3. All variables used in expression have values initialised. (uninitVars)
+3. All variables used are declared with a type. (undeclaredVars)
 
-4. All procedure being invoked are defined in procedure store. (undefinedPrcdrs)
+4. All variables used in expression have values initialised. (uninitVars)
 
-5. Array related check:
-   5.1. Array variable is not used alone, i.e. without an index. (arrVars)
-   5.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
-   5.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
+5. The parameters passed in matches the defined type. (incorrectParamInvocs)
+   This check is essentially check no. 1 applied on procedures.
+
+6. Array related check:
+   6.1. Array variable is not used alone, i.e. without an index. (arrVars)
+   6.2. Var in (AsgnArrRef Var Exp Exp) is ArrayType. (badAsgnArrRefs)
+   6.3. The first Exp (index expression) in (AsgnArrRef Var Exp Exp) is IntType.
         (badAsgnArrRefs)
-   5.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
-   5.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
+   6.4. Var in (ArrRef Var Exp) is ArrayType. (badArrRefs)
+   6.5. The Exp in (ArrRef Var Exp) is IntType. (badArrRefs)
 
-6. All expressions used in assignments have correct type. The type of righthand
+7. All expressions used in assignments have correct type. The type of righthand
    expression is same as the type of lefthand variable. (incorrectAsgnmts)
 
-7. Conditional expressions for If or Do statement are used correctly. This is
+8. Conditional expressions for If or Do statement are used correctly. This is
    to make sure no integer/array values end up as condition expression of If or
    Do. (misConExps)
 
@@ -186,34 +189,37 @@ to exec.
 >   | not $ null check13
 >       = error ("\nMismatched type in variable store and symbol table: " ++ show check13)
 >   | not $ null check2
->       = error ("\nUndeclared Variable(s): " ++ show check2)
+>       = error ("\nUndefined procedure(s): " ++ show check2)
 >   | not $ null check3
->       = error ("\nUninitialised Variable(s): " ++ show check3)
+>       = error ("\nUndeclared Variable(s): " ++ show check3)
 >   | not $ null check4
->       = error ("\nUndefined procedure(s): " ++ show check4)
->   | not $ null check51
->       = error ("\nArray Variable(s) used alone: " ++ show check51)
->   | not $ null check523
->       = error ("\nType errors in array reference assignment(s): " ++ show check523)
->   | not $ null check545
->       = error ("\nType errors in array reference(s): " ++ show check545)
->   | not $ null check6
->       = error ("\nIncorrect Assignment(s): " ++ show check6)
+>       = error ("\nUninitialised Variable(s): " ++ show check4)
+>   | not $ null check5
+>       = error ("\nProcedure(s) invoked with incorrect parameters: " ++ show check5)
+>   | not $ null check61
+>       = error ("\nArray Variable(s) used alone: " ++ show check61)
+>   | not $ null check623
+>       = error ("\nType errors in array reference assignment(s): " ++ show check623)
+>   | not $ null check645
+>       = error ("\nType errors in array reference(s): " ++ show check645)
 >   | not $ null check7
->       = error ("\nIncorrect Expression(s): " ++ show check7)
+>       = error ("\nIncorrect Assignment(s): " ++ show check7)
+>   | not $ null check8
+>       = error ("\nIncorrect Expression(s): " ++ show check8)
 >   | otherwise
 >       = exec p s -- the non-error scenario
 >   where check11  = dclrdButNotInitVars p s    -- check no. 1.1
 >         check12  = intiButNotdclrdVars p s    -- check no. 1.2
 >         check13  = typeMismatchedVars p s     -- check no. 1.3
->         check2   = undeclaredVars p           -- check no. 2
->         check3   = uninitVars p s             -- check no. 3
->         check4   = undefinedPrcdrs p          -- check no. 4
->         check51  = arrVars p                  -- check no. 5.1
->         check523 = badAsgnArrRefs p           -- check no. 5.2 & 5.3
->         check545 = badArrRefs p               -- check no. 5.4 & 5.5
->         check6   = incorrectAsgnmts p         -- check no. 6
->         check7   = misConExps p               -- check no. 7
+>         check2   = undefinedPrcdrs p          -- check no. 2
+>         check3   = undeclaredVars p           -- check no. 3
+>         check4   = uninitVars p s             -- check no. 4
+>         check5   = incorrectParamInvocs p     -- check no. 5
+>         check61  = arrVars p                  -- check no. 6.1
+>         check623 = badAsgnArrRefs p           -- check no. 6.2 & 6.3
+>         check645 = badArrRefs p               -- check no. 6.4 & 6.5
+>         check7   = incorrectAsgnmts p         -- check no. 7
+>         check8   = misConExps p               -- check no. 8
 
 exec:
 To execute a program, we just execute each statement in turn, passing the
@@ -261,11 +267,11 @@ variables that were parameters, because local variables shouldn't go global.
 >   where Bool b = eval cond vStore
 
 restoreShadowedParams:
-TL'DR: deal with local variables.
+TL'DR: deal with local variables after executing the procedure.
 
 After executing a procedure, the store will be changed. This method restores
-global variables that are shadowed by parameters, and remove variables that are
-in parameters but not in original store.
+global variables that were shadowed by parameters during executing the procedure,
+and remove local variables that were in parameters but not in original store.
 
 > restoreShadowedParams :: Eq a => Map a b -> Map a b -> Map a b -> Map a b
 > restoreShadowedParams [] _ _ = []
@@ -343,11 +349,11 @@ What we need to statically check:
    1.2. All initialised variables are declared. (intiButNotdclrdVars)
    1.3. Types are matched. (typeMismatchedVars)
 
-2. All variables used are declared with a type. (undeclaredVars)
+2. All procedure being invoked are defined in procedure store. (undefinedPrcdrs)
 
-3. All variables used in expression have values initialised. (uninitVars)
+3. All variables used are declared with a type. (undeclaredVars)
 
-4. All procedure being invoked are defined in procedure store. (undefinedPrcdrs)
+4. All variables used in expression have values initialised. (uninitVars)
 
 5. The parameters passed in matches the defined type. (incorrectParamInvocs)
    This check is essentially check no. 1 applied on procedures.
@@ -903,7 +909,9 @@ My test:
 >        ('x', Bool True),
 >        ('y', Bool False),
 >        ('z', Arr arr 4 IntType),
->        ('n', Int 5)
+>        ('m', Int 9999),
+>        ('n', Int 5),
+>        ('p', Int 0)
 >      ]
 >      where arr = array (0,3) [(0,Int 0),(1,Int 1),(2,Int 2),(3,Int 3)]
 
@@ -911,25 +919,23 @@ My test:
 > t9 = [
 >        ('x', BoolType),
 >        ('y', BoolType),
->        -- ('m', IntType),
+>        ('z', ArrayType IntType),
+>        ('m', IntType),
 >        ('n', IntType),
->        ('z', ArrayType IntType)
->        -- ('a', ArrayType BoolType)
+>        ('p', IntType)
 >      ]
 
 > pStore1 :: PrcdrStore
 > pStore1 = [("method",
 >            ([
 >               ('x', BoolType),
->               ('y', IntType)
+>               ('s', IntType)
 >             ],
 >             [
->                Asgn 'x' (ConstBool True),
->                Asgn 'y' (Bin Plus (ConstInt 500) (ConstInt 300))
+>                Asgn 'x' (ConstBool False),
+>                Asgn 's' (Bin Plus (ConstInt 500) (ConstInt 300))
 >             ])
 >            )]
-
-> -- TODO!!! Test!!!
 
 > p9 :: Prog
 > p9 = (
@@ -937,9 +943,9 @@ My test:
 >   pStore1,
 >   [
 >     Asgn 'x' (Una Not (Var 'y')),
->     Asgn 'm' (Var 'x'),
+>     Asgn 'y' (Var 'x'),
 >     AsgnArrRef 'z' (ConstInt 0) (Bin Plus (ArrRef 'z' (ConstInt 2)) (ConstInt 10)),
 >     If (Bin And (Var 'x') (Var 'y')) (t9, [], [Asgn 'm' (ConstInt 5)]) (t9, [], [Asgn 'n' (ConstInt 0)]),
 >     Do (Bin Gt (Var 'n') (ConstInt 1)) (t9, [], [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))]),
->     InvokePrcdr "method" s9
+>     InvokePrcdr "method" [ ('x', Bool True), ('s', Int 555)]
 >   ])
