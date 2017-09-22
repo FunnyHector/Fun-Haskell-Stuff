@@ -1,3 +1,19 @@
+-----------------------------------------------------
+                 General discussion
+-----------------------------------------------------
+
+I didn't do variable declaration. I tried, but really couldn't within such a
+short time. The most diffucult part lives in scoping variables and hence more
+complicated static checking. Almost all static checking functions in this part
+need to be modified to keep track of variable declarations. Also for each
+declaration, we need to use different checking strategy depending on whether
+it's global or local variable declaration.
+
+
+-----------------------------------------------------
+                        Code
+-----------------------------------------------------
+
 Initial code for COMP304 Assignment 3, 2017.
 
 Author: Lindsay Groves, VUW, 2017.
@@ -59,8 +75,9 @@ invocation, if, or do statement.
 >           | Asgn Var Exp
 >           | AsgnArrRef Var Exp Exp
 >           | InvokePrcdr PrcdrName VarStore
->           | If Exp Prog Prog    -- TODO: should this be Prog or [Stmt]? If we use Prog, we have scoped variables.
+>           | If Exp Prog Prog
 >           | Do Exp Prog
+>           -- | Declare Var Type -- Allow declaration is easy. What's hardcore is the excessive amount of checking we need to do.
 >           deriving (Eq, Show)
 
 An expression can be a constant(int/bool), a variable, or a binary operator
@@ -107,6 +124,7 @@ A symbol table is a map from varibales to types
 > type SymTab = Map Var Type
 
 A result is like Either, it's either a good result or an error with message
+(Not used so far)
 
 > data Result a = OK a | Err String  -- TODO: not used so far
 
@@ -280,8 +298,6 @@ and remove local variables that were in parameters but not in original store.
 >   | hasKey k originStore && not (hasKey k params) = (k, v) : restoreShadowedParams pairs originStore params
 >   | not (hasKey k originStore) && hasKey k params = restoreShadowedParams pairs originStore params
 >   | otherwise                                     = error "post-procedure store should not have more variables than original store"
-
-
 
 eval:
 Evaluate an expression, according to its type
@@ -949,3 +965,12 @@ My test:
 >     Do (Bin Gt (Var 'n') (ConstInt 1)) (t9, [], [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))]),
 >     InvokePrcdr "method" [ ('x', Bool True), ('s', Int 555)]
 >   ])
+
+
+-----------------------------------------------------
+                     Test cases
+-----------------------------------------------------
+
+
+I don't know how to assert on a expected error thrown in Haskel, so for `run`
+function, I manually tested all error-checking guards.

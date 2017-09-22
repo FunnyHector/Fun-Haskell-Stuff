@@ -770,3 +770,8 @@ My test:
 >     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (ConstInt 5)]) (t9, [Asgn 'n' (ConstInt 0)]),
 >     Do (Bin Gt (Var 'n') (ConstInt 1)) (t9, [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))])
 >   ])
+
+
+-----------------------------------------------------
+                     Test cases
+-----------------------------------------------------

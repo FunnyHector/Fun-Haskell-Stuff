@@ -33,6 +33,17 @@ delKey :: a -> Map a b -> Map a b
 > delKey :: Eq a => a -> Map a b -> Map a b
 > delKey k = filter (\(x,_) -> x /= k)
 
+equals:
+Checks whether two maps have same pairs.
+(In many languages triple equals means identity equivalence. Here it's not.
+This function provides convenience for testing)
+
+> (===) :: (Eq a, Eq b) => Map a b -> Map a b -> Bool
+> (===) mapa mapb
+>   = isSubMap mapa mapb && isSubMap mapb mapa
+>     where isSubMap a b = all (`elem` b) a
+
+
 merge:
 merge the second map into the first map. A pair with new key will be added, and
 a pair with existing key will overwrite the old pair.
