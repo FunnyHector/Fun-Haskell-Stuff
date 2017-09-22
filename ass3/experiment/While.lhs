@@ -58,15 +58,19 @@ Values are assumed to be integers/boolean/array.
 >          | Arr (Array Int Val) Int Type  -- 3 params: array, size, type
 >          deriving (Eq, Show)
 
+A block is a list of statements.
+
+> type Block = [Stmt]
+
 A procedure is a list of statements, and a symbol table to define the type of
 parameters. When invoking a procedure, often some parameters are passed in. A
 procedure can be invoked using the name.
 
-> type Prcdr = (SymTab, [Stmt])
+> type Prcdr = (SymTab, Block)
 
 A program is a symbol table, a procedure store, and a list of statements
 
-> type Prog = (SymTab, PrcdrStore, [Stmt])
+> type Prog = (SymTab, PrcdrStore, Block)
 
 A statement can be a skip, assignment, array reference assignment, procedure
 invocation, if, or do statement.
