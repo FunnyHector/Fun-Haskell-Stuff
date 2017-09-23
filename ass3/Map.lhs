@@ -43,7 +43,6 @@ This function provides convenience for testing)
 >   = isSubMap mapa mapb && isSubMap mapb mapa
 >     where isSubMap a b = all (`elem` b) a
 
-
 merge:
 merge the second map into the first map. A pair with new key will be added, and
 a pair with existing key will overwrite the old pair.
