@@ -2,6 +2,30 @@
                  General discussion
 -----------------------------------------------------
 
+What I did:
+
+
+type support for array of arrays. Theoretically it supports many dimensions.
+
+
+
+
+
+
+
+What I didn't do:
+
+1. Although multi dimension array can be stored in the initial store, it cannot
+be read or updated. I think I know how to do this, but time is really tight for
+such a big assignment. A possible solution is to change the statement
+`AsgnArrRef Var Exp Exp` to `AsgnArrRef Exp Exp Exp`, and change the expression
+`ArrRef Var Exp` to `ArrRef Exp Exp`. This change allow us to recursively access
+a multi-dimension array like `ArrRef (ArrRef (Var 'x') (Int 0)) (Int 0)`. If I
+had more time, this would be where I'm heading.
+
+
+
+
 
 I didn't do variable declaration. I tried, but really couldn't within such a
 short time. The most diffucult part lives in scoping variables and hence more
@@ -476,7 +500,9 @@ Find out all procedures used but not defined in the procedure store.
 
 > undefinedPrcdrs :: Prog -> [PrcdrName]
 > undefinedPrcdrs (_, pStore, block)
->   = nub $ undefinedPrcdrsBlock block ([(emptyMap, emptyMap)], pStore)
+>   = nub $ undefinedPrcdrsBlock allStmts ([(emptyMap, emptyMap)], pStore)
+>     where stmtsFormPrcdrs = concatMap (snd . snd) pStore
+>           allStmts        = nub $ block ++ stmtsFormPrcdrs
 
 undefinedPrcdrsBlock:
 Given a block, Find out all procedures used but not defined in the procedure
@@ -503,52 +529,59 @@ Find out all the variables that are used but not declared in a programme.
 
 > undeclaredVars :: Prog -> [Var]
 > undeclaredVars (symTab, pStore, block)
->   = nub $ undeclaredVarsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub badVars
+>     where (badVars, _) = undeclaredVarsBlock block ([(symTab, emptyMap)], pStore) []
 
 undeclaredVarsBlock:
 Find out all the variables that are used but not declared in a programme.
 
-> undeclaredVarsBlock :: Block -> State -> [Var]
-> undeclaredVarsBlock [] _ = []
-> undeclaredVarsBlock (stmt : stmts) state
->   = vars ++ undeclaredVarsBlock stmts postState
->     where (vars, postState) = undeclaredVarsStmt stmt state
+> undeclaredVarsBlock :: Block -> State -> [PrcdrName] -> ([Var], [PrcdrName])
+> undeclaredVarsBlock [] _ visitedPrc = ([], visitedPrc)
+> undeclaredVarsBlock (stmt : stmts) state visitedPrc
+>   = (vars ++ vars', postVisitedPrc')
+>     where (vars, postState, postVisitedPrc) = undeclaredVarsStmt stmt state visitedPrc
+>           (vars', postVisitedPrc') = undeclaredVarsBlock stmts postState postVisitedPrc
 
 undeclaredVarsStmt:
 Find out all the variables that are used but not declared in a statement.
 
-> undeclaredVarsStmt :: Stmt -> State -> ([Var], State)
+> undeclaredVarsStmt :: Stmt -> State -> [PrcdrName] -> ([Var], State, [PrcdrName])
 
-> undeclaredVarsStmt Skip state = ([], state)
+> undeclaredVarsStmt Skip state visitedPrc = ([], state, visitedPrc)
 
-> undeclaredVarsStmt (Asgn v e) state
->   | isVarDeclared v state = (rest, state)
->   | otherwise             = (v : rest, state)
+> undeclaredVarsStmt (Asgn v e) state visitedPrc
+>   | isVarDeclared v state = (rest, state, visitedPrc)
+>   | otherwise             = (v : rest, state, visitedPrc)
 >   where rest = undeclaredVarsExp e state
 
-> undeclaredVarsStmt (AsgnArrRef var idxExp valExp) state
->   | isVarDeclared var state = (rest, state)
->   | otherwise               = (var : rest, state)
+> undeclaredVarsStmt (AsgnArrRef var idxExp valExp) state visitedPrc
+>   | isVarDeclared var state = (rest, state, visitedPrc)
+>   | otherwise               = (var : rest, state, visitedPrc)
 >   where rest = undeclaredVarsExp idxExp state ++ undeclaredVarsExp valExp state
 
 to check a procedure, we basically treat it as a programme, with parameters
 merged into glabal variable store.
 
-> undeclaredVarsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badVars, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badVars           = undeclaredVarsBlock block newState
+> undeclaredVarsStmt (InvokePrcdr prcName _) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>   | otherwise                 = (badVars, state, postVisitedPrc)
+>     where (paramTab, block)         = getProcedure prcName state
+>           newState                  = ((paramTab, emptyMap) : scopes, pStore)
+>           (badVars, postVisitedPrc) = undeclaredVarsBlock block newState (prcName : visitedPrc)
 
-> undeclaredVarsStmt (If e c p) state@(scopes, pStore)
->   = (undeclaredVarsExp e state ++ undeclaredVarsBlock c newState ++ undeclaredVarsBlock p newState, state)
->     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+> undeclaredVarsStmt (If e c p) state@(scopes, pStore) visitedPrc
+>   = (undeclaredVarsExp e state ++ badVars ++ badVars', state, visitedPrc)
+>     where newState      = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badVars,  _) = undeclaredVarsBlock c newState visitedPrc
+>           (badVars', _) = undeclaredVarsBlock p newState visitedPrc
 
-> undeclaredVarsStmt (Do e p) state@(scopes, pStore)
->   = (undeclaredVarsExp e state ++ undeclaredVarsBlock p newState, state)
->     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+> undeclaredVarsStmt (Do e p) state@(scopes, pStore) visitedPrc
+>   = (undeclaredVarsExp e state ++ badVars, state, visitedPrc)
+>     where newState     = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badVars, _) = undeclaredVarsBlock p newState visitedPrc
 
-> undeclaredVarsStmt (Declare var tipe) state = ([], declareVar var tipe state)
+> undeclaredVarsStmt (Declare var tipe) state visitedPrc
+>   = ([], declareVar var tipe state, visitedPrc)
 
 undeclaredVarsExp:
 Find out all the variables that are used but not declared in an expression.
@@ -576,7 +609,10 @@ Find out all attempts to re-declare variables.
 
 > reDeclarations :: Prog -> [Stmt]
 > reDeclarations (symTab, pStore, block)
->   = nub $ reDeclarationsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub $ badStmts ++ badStmtsFromPrcs
+>     where badStmts = reDeclarationsBlock block ([(symTab, emptyMap)], pStore)
+>           prcdrs = map snd pStore
+>           badStmtsFromPrcs = concatMap (\(paramTab, pBlock) -> reDeclarationsBlock pBlock ([(paramTab, emptyMap)], pStore)) prcdrs
 
 reDeclarationsBlock:
 Given a block, find out all attempts to re-declare variables.
@@ -591,12 +627,6 @@ reDeclarationsStmt:
 Given a statement, find out all attempts to re-declare variables.
 
 > reDeclarationsStmt :: Stmt -> State -> ([Stmt], State)
-
-> reDeclarationsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badStmts, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badStmts          = reDeclarationsBlock block newState
 
 > reDeclarationsStmt (If _ thenPart elsePart) state@(scopes, pStore)
 >   = (reDeclarationsBlock thenPart newState ++ reDeclarationsBlock elsePart newState, state)
@@ -618,51 +648,57 @@ Find out all variables used but not initialised in a programme.
 
 > uninitVars :: Prog -> VarStore -> [Var]
 > uninitVars (_, pStore, block) vStore
->   = nub $ uninitVarsBlock block ([(emptyMap, vStore)], pStore)
+>   = nub badVars
+>     where (badVars, _) = uninitVarsBlock block ([(emptyMap, vStore)], pStore) []
 
 uninitVarsBlock:
 Find out all variables used but not initialised in a block.
 
-> uninitVarsBlock :: Block -> State -> [Var]
-> uninitVarsBlock [] _ = []
-> uninitVarsBlock (stmt : stmts) state
->   = vars ++ uninitVarsBlock stmts postState
->     where (vars, postState) = uninitVarsStmt stmt state
+> uninitVarsBlock :: Block -> State -> [PrcdrName] -> ([Var], [PrcdrName])
+> uninitVarsBlock [] _ visitedPrc = ([], visitedPrc)
+> uninitVarsBlock (stmt : stmts) state visitedPrc
+>   = (vars ++ vars', postVisitedPrc')
+>     where (vars, postState, postVisitedPrc) = uninitVarsStmt stmt state visitedPrc
+>           (vars', postVisitedPrc') = uninitVarsBlock stmts postState postVisitedPrc
 
 uninitVarsStmt:
 Find out all variables used but not initialised in a statement.
 
-> uninitVarsStmt :: Stmt -> State -> ([Var], State)
+> uninitVarsStmt :: Stmt -> State -> [PrcdrName] -> ([Var], State, [PrcdrName])
 
 if the expression `e` is checked out, we assign (Int 0) to it to mark it as
 initialised instead of actual value. #optimisation.
 
-> uninitVarsStmt (Asgn v e) state
->   | null badVars = ([], assignVar v (Int 0) state)
->   | otherwise    = (badVars, state)
+> uninitVarsStmt (Asgn v e) state visitedPrc
+>   | null badVars = ([], assignVar v (Int 0) state, visitedPrc)
+>   | otherwise    = (badVars, state, visitedPrc)
 >   where badVars = uninitVarsExp e state
 
-> uninitVarsStmt (AsgnArrRef v idxExp valExp) state
->   | null badVarsIdx && null badVarsVal = ([], assignVar v (Int 0) state)
->   | otherwise                          = (badVarsIdx ++ badVarsVal, state)
+> uninitVarsStmt (AsgnArrRef v idxExp valExp) state visitedPrc
+>   | null badVarsIdx && null badVarsVal = ([], assignVar v (Int 0) state, visitedPrc)
+>   | otherwise                          = (badVarsIdx ++ badVarsVal, state, visitedPrc)
 >   where badVarsIdx = uninitVarsExp idxExp state
 >         badVarsVal = uninitVarsExp valExp state
 
-> uninitVarsStmt (InvokePrcdr prcName params) state@(scopes, pStore)
->   = (badVars, state)
->     where (_, block) = getProcedure prcName state
->           newState   = ((emptyMap, params) : scopes, pStore)
->           badVars    = uninitVarsBlock block newState
+> uninitVarsStmt (InvokePrcdr prcName params) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>   | otherwise                 = (badVars, state, postVisitedPrc)
+>     where (_, block)                = getProcedure prcName state
+>           newState                  = ((emptyMap, params) : scopes, pStore)
+>           (badVars, postVisitedPrc) = uninitVarsBlock block newState (prcName : visitedPrc)
 
-> uninitVarsStmt (If e c p) state@(scopes, pStore)
->   = (uninitVarsExp e state ++ uninitVarsBlock c newState ++ uninitVarsBlock p newState, state)
+> uninitVarsStmt (If e c p) state@(scopes, pStore) visitedPrc
+>   = (uninitVarsExp e state ++ badVars ++ badVars', state, visitedPrc)
 >     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badVars,  _)  = uninitVarsBlock c newState visitedPrc
+>           (badVars',  _) = uninitVarsBlock p newState visitedPrc
 
-> uninitVarsStmt (Do e p) state@(scopes, pStore)
->   = (uninitVarsExp e state ++ uninitVarsBlock p newState, state)
+> uninitVarsStmt (Do e p) state@(scopes, pStore) visitedPrc
+>   = (uninitVarsExp e state ++ badVars, state, visitedPrc)
 >     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badVars,  _)  = uninitVarsBlock p newState visitedPrc
 
-> uninitVarsStmt _ state = ([], state)
+> uninitVarsStmt _ state visitedPrc = ([], state, visitedPrc)
 
 uninitVarsExp:
 Find out all variables used but not initialised in an expression.
@@ -691,36 +727,46 @@ the defined type.
 
 > incorrectParamInvocs :: Prog -> [Stmt]
 > incorrectParamInvocs (_, pStore, block)
->   = nub $ incorrectParamInvocsBlock block ([(emptyMap, emptyMap)], pStore)
+>   = nub badVars
+>     where (badVars, _) = incorrectParamInvocsBlock block ([(emptyMap, emptyMap)], pStore) []
 
 incorrectParamInvocsBlock:
 Given a block, find out all The procedure invocations with parameters passed
 in mismatching the defined type.
 
-> incorrectParamInvocsBlock :: Block -> State -> [Stmt]
-> incorrectParamInvocsBlock [] _ = []
-> incorrectParamInvocsBlock (stmt : stmts) state
->   = incorrectParamInvocsStmt stmt state ++ incorrectParamInvocsBlock stmts state
+> incorrectParamInvocsBlock :: Block -> State -> [PrcdrName] -> ([Stmt], [PrcdrName])
+> incorrectParamInvocsBlock [] _ visitedPrc = ([], visitedPrc)
+> incorrectParamInvocsBlock (stmt : stmts) state visitedPrc
+>   = (vars ++ vars', postVisitedPrc')
+>     where (vars,  postVisitedPrc) = incorrectParamInvocsStmt stmt state visitedPrc
+>           (vars', postVisitedPrc') = incorrectParamInvocsBlock stmts state postVisitedPrc
 
 incorrectParamInvocsStmt:
 Given a statement, find out all The procedure invocations with parameters passed
 in mismatching the defined type.
 
-> incorrectParamInvocsStmt :: Stmt -> State -> [Stmt]
-> incorrectParamInvocsStmt stmt@(InvokePrcdr prcName params) state@(_, pStore)
->   | check11 || check12 || check13 = [stmt]
->   | otherwise                     = []
->   where (symTab, stmts) = getProcedure prcName state
+> incorrectParamInvocsStmt :: Stmt -> State -> [PrcdrName] -> ([Stmt], [PrcdrName])
+> incorrectParamInvocsStmt stmt@(InvokePrcdr prcName params) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], visitedPrc)
+>   | check11 || check12 || check13 = (stmt : badStmts, postVisitedPrc)
+>   | otherwise                     = (badStmts, postVisitedPrc)
+>   where (symTab, stmts)            = getProcedure prcName state
+>         newState                   = ((emptyMap, emptyMap) : scopes, pStore)
+>         (badStmts, postVisitedPrc) = incorrectParamInvocsBlock stmts newState (prcName : visitedPrc)
 >         check11 = not $ null $ dclrdButNotInitVars (symTab, pStore, stmts) params
 >         check12 = not $ null $ intiButNotdclrdVars (symTab, pStore, stmts) params
 >         check13 = not $ null $ typeMismatchedVars (symTab, pStore, stmts) params
 
-> incorrectParamInvocsStmt (If _ c p) state
->   = incorrectParamInvocsBlock c state ++ incorrectParamInvocsBlock p state
+> incorrectParamInvocsStmt (If _ c p) state visitedPrc
+>   = (badStmts ++ badStmts', visitedPrc)
+>     where (badStmts,  _) = incorrectParamInvocsBlock c state visitedPrc
+>           (badStmts', _) = incorrectParamInvocsBlock p state visitedPrc
 
-> incorrectParamInvocsStmt (Do _ p) state = incorrectParamInvocsBlock p state
+> incorrectParamInvocsStmt (Do _ p) state visitedPrc
+>   = (badStmts, visitedPrc)
+>     where (badStmts,  _) = incorrectParamInvocsBlock p state visitedPrc
 
-> incorrectParamInvocsStmt _ _ = []
+> incorrectParamInvocsStmt _ _ visitedPrc = ([], visitedPrc)
 
 arrVars:
 Check whether an array variable is used alone, i.e. without an index.
@@ -728,44 +774,51 @@ Check whether an array variable is used alone, i.e. without an index.
 
 > arrVars :: Prog -> [Var]
 > arrVars (symTab, pStore, block)
->   = nub $ arrVarsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub badVars
+>     where (badVars, _) = arrVarsBlock block ([(symTab, emptyMap)], pStore) []
 
 arrVarsBlock:
 Checks whether an array variable is used alone in a block, i.e. without an index.
 
-> arrVarsBlock :: Block -> State -> [Var]
-> arrVarsBlock [] _ = []
-> arrVarsBlock (stmt : stmts) state
->   = vars ++ arrVarsBlock stmts postState
->     where (vars, postState) = arrVarsStmt stmt state
+> arrVarsBlock :: Block -> State -> [PrcdrName] -> ([Var], [PrcdrName])
+> arrVarsBlock [] _ visitedPrc = ([], visitedPrc)
+> arrVarsBlock (stmt : stmts) state visitedPrc
+>   = (vars ++ vars', postVisitedPrc')
+>     where (vars, postState, postVisitedPrc) = arrVarsStmt stmt state visitedPrc
+>           (vars', postVisitedPrc') = arrVarsBlock stmts postState postVisitedPrc
 
 arrVarsStmt:
 Checks whether an array variable is used alone in a statement, i.e. without an index.
 
-> arrVarsStmt :: Stmt -> State -> ([Var], State)
+> arrVarsStmt :: Stmt -> State -> [PrcdrName] -> ([Var], State, [PrcdrName])
 
-> arrVarsStmt Skip state = ([], state)
+> arrVarsStmt Skip state visitedPrc = ([], state, visitedPrc)
 
-> arrVarsStmt (Asgn _ e) state = (arrVarsExp e state, state)
+> arrVarsStmt (Asgn _ e) state visitedPrc = (arrVarsExp e state, state, visitedPrc)
 
-> arrVarsStmt (AsgnArrRef _ idxExp valExp) state
->   = (arrVarsExp idxExp state ++ arrVarsExp valExp state, state)
+> arrVarsStmt (AsgnArrRef _ idxExp valExp) state visitedPrc
+>   = (arrVarsExp idxExp state ++ arrVarsExp valExp state, state, visitedPrc)
 
-> arrVarsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badVars, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badVars           = arrVarsBlock block newState
+> arrVarsStmt (InvokePrcdr prcName _) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>   | otherwise                 = (badVars, state, postVisitedPrc)
+>     where (paramTab, block)         = getProcedure prcName state
+>           newState                  = ((paramTab, emptyMap) : scopes, pStore)
+>           (badVars, postVisitedPrc) = arrVarsBlock block newState (prcName : visitedPrc)
 
-> arrVarsStmt (If e c p) state@(scopes, pStore)
->   = (arrVarsExp e state ++ arrVarsBlock c newState ++ arrVarsBlock p newState, state)
+> arrVarsStmt (If e c p) state@(scopes, pStore) visitedPrc
+>   = (arrVarsExp e state ++ badVars ++ badVars', state, visitedPrc)
 >     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badVars,   _) = arrVarsBlock c newState visitedPrc
+>           (badVars',  _) = arrVarsBlock p newState visitedPrc
 
-> arrVarsStmt (Do e p) state@(scopes, pStore)
->   = (arrVarsExp e state ++ arrVarsBlock p newState, state)
->     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+> arrVarsStmt (Do e p) state@(scopes, pStore) visitedPrc
+>   = (arrVarsExp e state ++ badVars, state, visitedPrc)
+>     where newState     = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badVars, _) = arrVarsBlock p newState visitedPrc
 
-> arrVarsStmt (Declare var tipe) state = ([], declareVar var tipe state)
+> arrVarsStmt (Declare var tipe) state visitedPrc
+>   = ([], declareVar var tipe state, visitedPrc)
 
 arrVarsExp:
 Checks whether an array variable is used alone in an expression, i.e. without an index.
@@ -792,49 +845,56 @@ incorrect type in `AsgnArrRef Var Exp Exp`.
 
 > badAsgnArrRefs :: Prog -> [Stmt]
 > badAsgnArrRefs (symTab, pStore, block)
->   = nub $ badAsgnArrRefsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub badStmts
+>     where (badStmts, _) = badAsgnArrRefsBlock block ([(symTab, emptyMap)], pStore) []
 
 badAsgnArrRefsBlock:
 Checks through a block whether variables and index expressions have incorrect
 type in `AsgnArrRef Var Exp Exp`.
 
-> badAsgnArrRefsBlock :: Block -> State -> [Stmt]
-> badAsgnArrRefsBlock [] _ = []
-> badAsgnArrRefsBlock (stmt : stmts) state
->   = vars ++ badAsgnArrRefsBlock stmts postState
->     where (vars, postState) = badAsgnArrRefsStmt stmt state
+> badAsgnArrRefsBlock :: Block -> State -> [PrcdrName] -> ([Stmt], [PrcdrName])
+> badAsgnArrRefsBlock [] _ visitedPrc = ([], visitedPrc)
+> badAsgnArrRefsBlock (stmt : stmts) state visitedPrc
+>   = (vars ++ vars', postVisitedPrc')
+>     where (vars, postState, postVisitedPrc) = badAsgnArrRefsStmt stmt state visitedPrc
+>           (vars', postVisitedPrc') = badAsgnArrRefsBlock stmts postState postVisitedPrc
 
 badAsgnArrRefsStmt:
 Checks through a statement whether variables and index expressions have
 incorrect type in `AsgnArrRef Var Exp Exp`.
 
-> badAsgnArrRefsStmt :: Stmt -> State -> ([Stmt], State)
+> badAsgnArrRefsStmt :: Stmt -> State -> [PrcdrName] -> ([Stmt], State, [PrcdrName])
 
-> badAsgnArrRefsStmt s@(AsgnArrRef v idxExp valExp) state
->   | isVarDeclared v state && (getVarType v state == IntType) = ([s], state)
->   | isVarDeclared v state && (getVarType v state == BoolType) = ([s], state)
->   | expType idxExp state /= IntType = ([s], state)
->   | expType valExp state /= tipe = ([s], state)
->   | otherwise = ([], state)
+> badAsgnArrRefsStmt s@(AsgnArrRef v idxExp valExp) state visitedPrc
+>   | isVarDeclared v state && (getVarType v state == IntType) = ([s], state, visitedPrc)
+>   | isVarDeclared v state && (getVarType v state == BoolType) = ([s], state, visitedPrc)
+>   | expType idxExp state /= IntType = ([s], state, visitedPrc)
+>   | expType valExp state /= tipe = ([s], state, visitedPrc)
+>   | otherwise = ([], state, visitedPrc)
 >   where (ArrayType tipe) = getVarType v state
 
-> badAsgnArrRefsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badStmts, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badStmts           = badAsgnArrRefsBlock block newState
+> badAsgnArrRefsStmt (InvokePrcdr prcName _) state@(scopes, pStore) visitedPrc
+>  | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>  | otherwise                 = (badStmts, state, postVisitedPrc)
+>     where (paramTab, block)          = getProcedure prcName state
+>           newState                   = ((paramTab, emptyMap) : scopes, pStore)
+>           (badStmts, postVisitedPrc) = badAsgnArrRefsBlock block newState (prcName : visitedPrc)
 
-> badAsgnArrRefsStmt (If _ c p) state@(scopes, pStore)
->   = (badAsgnArrRefsBlock c newState ++ badAsgnArrRefsBlock p newState, state)
+> badAsgnArrRefsStmt (If _ c p) state@(scopes, pStore) visitedPrc
+>   = (badStmts ++ badStmts', state, visitedPrc)
 >     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badStmts,  _) = badAsgnArrRefsBlock c newState visitedPrc
+>           (badStmts', _) = badAsgnArrRefsBlock p newState visitedPrc
 
-> badAsgnArrRefsStmt (Do _ p) state@(scopes, pStore)
->   = (badAsgnArrRefsBlock p newState, state)
->     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+> badAsgnArrRefsStmt (Do _ p) state@(scopes, pStore) visitedPrc
+>   = (badStmts, state, visitedPrc)
+>     where newState      = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badStmts, _) = badAsgnArrRefsBlock p newState visitedPrc
 
-> badAsgnArrRefsStmt (Declare var tipe) state = ([], declareVar var tipe state)
+> badAsgnArrRefsStmt (Declare var tipe) state visitedPrc
+>   = ([], declareVar var tipe state, visitedPrc)
 
-> badAsgnArrRefsStmt _ state = ([], state)
+> badAsgnArrRefsStmt _ state visitedPrc = ([], state, visitedPrc)
 
 badArrRefs:
 Checks through a programme whether variables and index expressions have
@@ -843,46 +903,53 @@ incorrect type in `ArrRef Var Exp`
 
 > badArrRefs :: Prog -> [Exp]
 > badArrRefs (symTab, pStore, block)
->   = nub $ badArrRefsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub badExps
+>     where (badExps, _) = badArrRefsBlock block ([(symTab, emptyMap)], pStore) []
 
 badArrRefsBlock:
 Checks through a block whether variables and index expressions have incorrect
 type in `ArrRef Var Exp`
 
-> badArrRefsBlock :: Block -> State -> [Exp]
-> badArrRefsBlock [] _ = []
-> badArrRefsBlock (stmt : stmts) state
->   = vars ++ badArrRefsBlock stmts postState
->     where (vars, postState) = badArrRefsStmt stmt state
+> badArrRefsBlock :: Block -> State -> [PrcdrName] -> ([Exp], [PrcdrName])
+> badArrRefsBlock [] _ visitedPrc = ([], visitedPrc)
+> badArrRefsBlock (stmt : stmts) state visitedPrc
+>   = (vars ++ vars', postVisitedPrc')
+>     where (vars, postState, postVisitedPrc) = badArrRefsStmt stmt state visitedPrc
+>           (vars', postVisitedPrc') = badArrRefsBlock stmts postState postVisitedPrc
 
 badArrRefsStmt:
 Checks through a statement whether variables and index expressions have
 incorrect type in `ArrRef Var Exp`
 
-> badArrRefsStmt :: Stmt -> State -> ([Exp], State)
+> badArrRefsStmt :: Stmt -> State -> [PrcdrName] -> ([Exp], State, [PrcdrName])
 
-> badArrRefsStmt Skip state = ([], state)
+> badArrRefsStmt Skip state visitedPrc = ([], state, visitedPrc)
 
-> badArrRefsStmt (Asgn _ e) state = (badArrRefsExp e state, state)
+> badArrRefsStmt (Asgn _ e) state visitedPrc = (badArrRefsExp e state, state, visitedPrc)
 
-> badArrRefsStmt (AsgnArrRef _ idxExp valExp) state
->   = (badArrRefsExp idxExp state ++ badArrRefsExp valExp state, state)
+> badArrRefsStmt (AsgnArrRef _ idxExp valExp) state visitedPrc
+>   = (badArrRefsExp idxExp state ++ badArrRefsExp valExp state, state, visitedPrc)
 
-> badArrRefsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badExps, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badExps           = badArrRefsBlock block newState
+> badArrRefsStmt (InvokePrcdr prcName _) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>   | otherwise                 = (badExps, state, postVisitedPrc)
+>     where (paramTab, block)         = getProcedure prcName state
+>           newState                  = ((paramTab, emptyMap) : scopes, pStore)
+>           (badExps, postVisitedPrc) = badArrRefsBlock block newState (prcName : visitedPrc)
 
-> badArrRefsStmt (If e c p) state@(scopes, pStore)
->   = (badArrRefsExp e state ++ badArrRefsBlock c newState ++ badArrRefsBlock p newState, state)
+> badArrRefsStmt (If e c p) state@(scopes, pStore) visitedPrc
+>   = (badArrRefsExp e state ++ badExps ++ badExps', state, visitedPrc)
 >     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badExps,  _) = badArrRefsBlock c newState visitedPrc
+>           (badExps', _) = badArrRefsBlock p newState visitedPrc
 
-> badArrRefsStmt (Do e p) state@(scopes, pStore)
->   = (badArrRefsExp e state ++ badArrRefsBlock p newState, state)
->     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+> badArrRefsStmt (Do e p) state@(scopes, pStore) visitedPrc
+>   = (badArrRefsExp e state ++ badExps, state, visitedPrc)
+>     where newState     = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badExps, _) = badArrRefsBlock p newState visitedPrc
 
-> badArrRefsStmt (Declare var tipe) state = ([], declareVar var tipe state)
+> badArrRefsStmt (Declare var tipe) state visitedPrc
+>   = ([], declareVar var tipe state, visitedPrc)
 
 badArrRefsExp:
 Checks through an expression whether variables and index expressions have
@@ -912,47 +979,54 @@ sides. N.B. this method doesn't check for array reference assignment.
 
 > wrongTypeAsgnmts :: Prog -> [Stmt]
 > wrongTypeAsgnmts (symTab, pStore, block)
->   = nub $ wrongTypeAsgnmtsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub badStmts
+>     where (badStmts, _) = wrongTypeAsgnmtsBlock block ([(symTab, emptyMap)], pStore) []
 
 wrongTypeAsgnmtsBlock:
 Checks through a bock whether an assignment has mismatched types on two sides.
 N.B. this method doesn't check for array reference assignment. `badAsgnArrRefs`
 checks for type mismatch in array reference assignments.
 
-> wrongTypeAsgnmtsBlock :: Block -> State -> [Stmt]
-> wrongTypeAsgnmtsBlock [] _ = []
-> wrongTypeAsgnmtsBlock (stmt : stmts) state
->   = vars ++ wrongTypeAsgnmtsBlock stmts postState
->     where (vars, postState) = wrongTypeAsgnmtsStmt stmt state
+> wrongTypeAsgnmtsBlock :: Block -> State -> [PrcdrName] -> ([Stmt], [PrcdrName])
+> wrongTypeAsgnmtsBlock [] _ visitedPrc = ([], visitedPrc)
+> wrongTypeAsgnmtsBlock (stmt : stmts) state visitedPrc
+>   = (badStmts ++ badStmts', postVisitedPrc')
+>     where (badStmts, postState, postVisitedPrc) = wrongTypeAsgnmtsStmt stmt state visitedPrc
+>           (badStmts', postVisitedPrc') = wrongTypeAsgnmtsBlock stmts postState postVisitedPrc
 
 wrongTypeAsgnmtsStmt:
 Checks through a statement whether an assignment has mismatched types on two
 sides. N.B. this method doesn't check for array reference assignment.
 `badAsgnArrRefs` checks for type mismatch in array reference assignments.
 
-> wrongTypeAsgnmtsStmt :: Stmt -> State -> ([Stmt], State)
+> wrongTypeAsgnmtsStmt :: Stmt -> State -> [PrcdrName] -> ([Stmt], State, [PrcdrName])
 
-> wrongTypeAsgnmtsStmt s@(Asgn v e) state
->   | isVarDeclared v state && (getVarType v state /= expType e state) = ([s], state)
->   | otherwise = ([], state)
+> wrongTypeAsgnmtsStmt s@(Asgn v e) state visitedPrc
+>   | isVarDeclared v state && (getVarType v state /= expType e state) = ([s], state, visitedPrc)
+>   | otherwise = ([], state, visitedPrc)
 
-> wrongTypeAsgnmtsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badStmts, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badStmts          = wrongTypeAsgnmtsBlock block newState
+> wrongTypeAsgnmtsStmt (InvokePrcdr prcName _) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>   | otherwise                 = (badStmts, state, postVisitedPrc)
+>     where (paramTab, block)          = getProcedure prcName state
+>           newState                   = ((paramTab, emptyMap) : scopes, pStore)
+>           (badStmts, postVisitedPrc) = wrongTypeAsgnmtsBlock block newState (prcName : visitedPrc)
 
-> wrongTypeAsgnmtsStmt (If _ c p) state@(scopes, pStore)
->   = (wrongTypeAsgnmtsBlock c newState ++ wrongTypeAsgnmtsBlock p newState, state)
+> wrongTypeAsgnmtsStmt (If _ c p) state@(scopes, pStore) visitedPrc
+>   = (badStmts ++ badStmts', state, visitedPrc)
 >     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badStmts,  _) = wrongTypeAsgnmtsBlock c newState visitedPrc
+>           (badStmts', _) = wrongTypeAsgnmtsBlock p newState visitedPrc
 
-> wrongTypeAsgnmtsStmt (Do _ p) state@(scopes, pStore)
->   = (wrongTypeAsgnmtsBlock p newState, state)
->     where newState = ((emptyMap, emptyMap) : scopes, pStore)
+> wrongTypeAsgnmtsStmt (Do _ p) state@(scopes, pStore) visitedPrc
+>   = (badStmts, state, visitedPrc)
+>     where newState      = ((emptyMap, emptyMap) : scopes, pStore)
+>           (badStmts, _) = wrongTypeAsgnmtsBlock p newState visitedPrc
 
-> wrongTypeAsgnmtsStmt (Declare var tipe) state = ([], declareVar var tipe state)
+> wrongTypeAsgnmtsStmt (Declare var tipe) state visitedPrc
+>   = ([], declareVar var tipe state, visitedPrc)
 
-> wrongTypeAsgnmtsStmt _ state = ([], state)
+> wrongTypeAsgnmtsStmt _ state visitedPrc = ([], state, visitedPrc)
 
 misConExps:
 Checks through a programme whether the condition expression in If or Do
@@ -961,45 +1035,51 @@ statement is Int typed or Array typed.
 
 > misConExps :: Prog -> [Exp]
 > misConExps (symTab, pStore, block)
->   = nub $ misConExpsBlock block ([(symTab, emptyMap)], pStore)
+>   = nub badExps
+>     where (badExps, _) = misConExpsBlock block ([(symTab, emptyMap)], pStore) []
 
 misConExpsBlock:
 Checks through a block whether the condition expression in If or Do statement
 is Int typed or Array typed.
 
-> misConExpsBlock :: Block -> State -> [Exp]
-> misConExpsBlock [] _ = []
-> misConExpsBlock (stmt : stmts) state
->   = vars ++ misConExpsBlock stmts postState
->     where (vars, postState) = misConExpsStmt stmt state
+> misConExpsBlock :: Block -> State -> [PrcdrName] -> ([Exp], [PrcdrName])
+> misConExpsBlock [] _ visitedPrc = ([], visitedPrc)
+> misConExpsBlock (stmt : stmts) state visitedPrc
+>   = (exps ++ exps', postVisitedPrc')
+>     where (exps, postState, postVisitedPrc) = misConExpsStmt stmt state visitedPrc
+>           (exps', postVisitedPrc') = misConExpsBlock stmts postState postVisitedPrc
 
 misConExpsStmt:
 Checks through a statement whether the condition expression in If or Do
 statement is Int typed or Array typed.
 
-> misConExpsStmt :: Stmt -> State -> ([Exp], State)
+> misConExpsStmt :: Stmt -> State -> [PrcdrName] -> ([Exp], State, [PrcdrName])
 
-> misConExpsStmt (InvokePrcdr prcName _) state@(scopes, pStore)
->   = (badExps, state)
->     where (paramTab, block) = getProcedure prcName state
->           newState          = ((paramTab, emptyMap) : scopes, pStore)
->           badExps           = misConExpsBlock block newState
+> misConExpsStmt (InvokePrcdr prcName _) state@(scopes, pStore) visitedPrc
+>   | prcName `elem` visitedPrc = ([], state, visitedPrc)
+>   | otherwise                 = (badExps, state, postVisitedPrc)
+>     where (paramTab, block)         = getProcedure prcName state
+>           newState                  = ((paramTab, emptyMap) : scopes, pStore)
+>           (badExps, postVisitedPrc) = misConExpsBlock block newState (prcName : visitedPrc)
 
-> misConExpsStmt (If e c p) state@(scopes, pStore)
->   | expType e state /= BoolType = (e : rest, state)
->   | otherwise                   = (rest, state)
->   where newState = ((emptyMap, emptyMap) : scopes, pStore)
->         rest     = misConExpsBlock c newState ++ misConExpsBlock p newState
+> misConExpsStmt (If e c p) state@(scopes, pStore) visitedPrc
+>   | expType e state /= BoolType = (e : rest, state, visitedPrc)
+>   | otherwise                   = (rest, state, visitedPrc)
+>   where newState      = ((emptyMap, emptyMap) : scopes, pStore)
+>         (badExps, _)  = misConExpsBlock c newState visitedPrc
+>         (badExps', _) = misConExpsBlock p newState visitedPrc
+>         rest          = badExps ++ badExps'
 
-> misConExpsStmt (Do e p) state@(scopes, pStore)
->   | expType e state /= BoolType = (e : rest, state)
->   | otherwise                   = (rest, state)
->   where newState = ((emptyMap, emptyMap) : scopes, pStore)
->         rest     = misConExpsBlock p newState
+> misConExpsStmt (Do e p) state@(scopes, pStore) visitedPrc
+>   | expType e state /= BoolType = (e : badExps, state, visitedPrc)
+>   | otherwise                   = (badExps, state, visitedPrc)
+>   where newState     = ((emptyMap, emptyMap) : scopes, pStore)
+>         (badExps, _) = misConExpsBlock p newState visitedPrc
 
-> misConExpsStmt (Declare var tipe) state = ([], declareVar var tipe state)
+> misConExpsStmt (Declare var tipe) state visitedPrc
+>   = ([], declareVar var tipe state, visitedPrc)
 
-> misConExpsStmt _ state = ([], state)
+> misConExpsStmt _ state visitedPrc = ([], state, visitedPrc)
 
 expType:
 Find out the type of an expression
@@ -1157,124 +1237,201 @@ Get the top layer variable store
 
 
 -----------------------------------------------------
-                    Test cases
+                     Test cases
 -----------------------------------------------------
 
 
-Some sample expressions
+Firstly here is a slightly more complex test programme. This programme covers
+most defined statements, expressions, operators, etc. It can be executed without
+error thrown. Though it's not a test case, it surely proves that the programme
+can run :)
 
-> e0 :: Exp
-> e0 = ConstInt 0
-> e1 :: Exp
-> e1 = ConstInt 1
-> e2 :: Exp
-> e2 = ConstBool True
-> e3 :: Exp
-> e3 = Var 'x'
-> e4 :: Exp
-> e4 = Bin Plus e3 e1
-> e5 :: Exp
-> e5 = Bin Plus (Var 'i') e1
+A Java equivalent version is also provided:
 
-Some sample stores
+Initial state:
 
-> s1 :: VarStore
-> s1 = []
-> s2 :: VarStore
-> s2 = [('x', Int 1)]
-> s3 :: VarStore
-> s3 = [('x', Int 1), ('y', Int 2)]
-> s4 :: VarStore
-> s4 = [('x', Bool True), ('y', Bool False), ('z', Bool True)]
+    // int variables
+    int a = 9999;
+    int b = 5;
+    int c = 0;
 
-some sample symbol tables
+    // boolean variables
+    boolean h = false;
+    boolean i = false;
 
-> t1 :: SymTab
-> t1 = [('x', IntType)]
-> t2 :: SymTab
-> t2 = [('x', BoolType)]
-> t3 :: SymTab
-> t3 = [('x', IntType), ('y', IntType)]
-> t4 :: SymTab
-> t4 = [('x', BoolType), ('y', IntType)]
+    // a one dimension array of int
+    int[] o = new int[4] { 0, 1, 2, 3 };
 
-Some sample programs
+    // a two dimension array, array of array of boolean
+    // sadly currently we only support having it in store :(
+    boolean[][] p = {
+        { true },
+        { false, true },
+        { true, false, true },
+    }
 
-> p1 :: Prog
-> p1 = (t1, pStore1, [Skip])
-> p2 :: Prog
-> p2 = (t1, pStore1, [Skip, Skip])
-> p3 :: Prog
-> p3 = (t1, pStore1, [Asgn 'x' e1])
-> p4 :: Prog
-> p4 = (t1, pStore1, [Asgn 'x' (Var 'x')])
-> p5 :: Prog
-> p5 = (t3, pStore1, [Asgn 'x' (Var 'y')])
-> p6 :: Prog
-> p6 = (t3, pStore1, [Asgn 'x' (Bin Plus (Var 'x') (ConstInt 1))])
-> p7 :: Prog
-> p7 = (t3, pStore1, [Asgn 'x' e1, Asgn 'y' e2,
->       If (Bin Eq (Var 'x') (Var 'y')) [Asgn 'z' e1] [Asgn 'z' e2]])
-> p8 :: Prog
-> p8 = (t3, pStore1, [Asgn 'i' e1, Asgn 's' e0,
->       Do (Bin Lt (Var 'i') (Var 'n')) [Asgn 's' (Bin Plus (Var 's') e1), Asgn 'i' e5]])
-
-My test:
-
-> s9 :: VarStore
-> s9 = [
->        ('x', Bool True),
->        ('y', Bool False),
->        ('z', Arr arr 4 IntType),
->        ('m', Int 9999),
->        ('n', Int 5),
->        ('p', Int 0)
+> s0 :: VarStore
+> s0 = [
+>        ('a', Int 9999),
+>        ('b', Int 5),
+>        ('c', Int 0),
+>        ('h', Bool False),
+>        ('i', Bool False),
+>        ('o', Arr arr1 4 IntType),
+>        ('p', Arr arr2 3 (ArrayType BoolType))
 >      ]
->      where arr = array (0,3) [(0,Int 0),(1,Int 1),(2,Int 2),(3,Int 3)]
+>      where arr1 = array (0,3) [(0,Int 0),(1,Int 1),(2,Int 2),(3,Int 3)]
+>            arr2 = array (0,2) [
+>                     (0, Arr (array (0,0) [(0, Bool True)]) 1 BoolType),
+>                     (1, Arr (array (0,1) [(0, Bool False), (1, Bool True)]) 2 BoolType),
+>                     (2, Arr (array (0,2) [(0, Bool True), (1, Bool False), (2, Bool True)]) 3 BoolType)
+>                   ]
 
-> t9 :: SymTab
-> t9 = [
->        ('x', BoolType),
->        ('y', BoolType),
->        ('z', ArrayType IntType),
->        ('m', IntType),
->        ('n', IntType),
->        ('p', IntType)
+> t0 :: SymTab
+> t0 = [
+>        ('a', IntType),
+>        ('b', IntType),
+>        ('c', IntType),
+>        ('h', BoolType),
+>        ('i', BoolType),
+>        ('o', ArrayType IntType),
+>        ('p', ArrayType (ArrayType BoolType))
 >      ]
 
-> pStore1 :: PrcdrStore
-> pStore1 = [("method",
+Procedure definition:
+
+    // parameter h shadows global variable h.
+    // sadly my approach allow the programme to modify parameters :(
+    // this procedure also calls itself.
+    winwin(boolean h, int v) {
+        if (c == 3) {
+           return;  // using Skip
+        } else {
+            // modify a local variable (parameter actually)
+            h = false;
+
+            // another assignment on local variable
+            v = 500 + 300;
+
+            // declare a variable within the scope of winwin procedure
+            int u;
+
+            // assign the newly declared variable using a global variable.
+            u = a;
+
+            // modify the global array o.
+            o[2] = o[2] ^ 2;
+
+            // modify the global variable b.
+            c = c + 1
+
+            // call winwin()
+            winwin(true, 555);
+        }
+    }
+
+> pStore0 :: PrcdrStore
+> pStore0 = [("winwin",
 >            ([
->               ('x', BoolType),
->               ('s', IntType)
+>               ('h', BoolType),
+>               ('v', IntType)
 >             ],
 >             [
->                Asgn 'x' (ConstBool False),
->                Asgn 's' (Bin Plus (ConstInt 500) (ConstInt 300)),
->                Declare 'a' IntType,
->                Asgn 'a' (Var 'n')
+>                If (Bin Eq (Var 'c') (ConstInt 3))
+>                   [Skip]
+>                   [
+>                      Asgn 'h' (ConstBool False),
+>                      Asgn 'v' (Bin Plus (ConstInt 500) (ConstInt 300)),
+>                      Declare 'u' IntType,
+>                      Asgn 'u' (Var 'a'),
+>                      AsgnArrRef 'o' (ConstInt 2) (Bin Power (ArrRef 'o' (ConstInt 2)) (ConstInt 2)),
+>                      Asgn 'c' (Bin Plus (Var 'c') (ConstInt 1)),
+>                      InvokePrcdr "winwin" [('h', Bool True), ('v', Int 555)]
+>                   ]
 >             ])
 >            )]
 
-> p9 :: Prog
-> p9 = (
->   t9,
->   pStore1,
+Programme:
+
+    // variable assignment, unary operation Not, variable as expression.
+    h = !i;
+
+    // assignment
+    i = h;
+
+    // variable declaration at global scope
+    Int u;
+
+    // array reference, array reference assignment, binary operation Times
+    o[0] = o[2] * 10;
+
+    // a skip statement here.
+    // Java has no such statement.
+
+    // if statement, binary operation And
+    if (h && i) {
+        a = 5;
+    } else {
+        a = 0;
+    }
+
+    // do statement, binary operation Lt
+    while (b > 1) {
+        // binary operation Minus, self-decrement
+        b = b - 1;
+    }
+
+    // assignment on newly declared variable.
+    // variable u is soon to be shadowed in procedure winwin, so it's a good
+    // test on scoping.
+    u = b;
+
+    // procedure invoked using parameters: (h: true, s: 555)
+    winwin(true, 555);
+
+> p0 :: Prog
+> p0 = (
+>   t0,
+>   pStore0,
 >   [
->     Asgn 'x' (Una Not (Var 'y')),
->     Asgn 'y' (Var 'x'),
->     Declare 'a' IntType,
->     AsgnArrRef 'z' (ConstInt 0) (Bin Plus (ArrRef 'z' (ConstInt 2)) (ConstInt 10)),
->     If (Bin And (Var 'x') (Var 'y')) [Asgn 'm' (ConstInt 5)] [Asgn 'n' (ConstInt 0)],
->     Do (Bin Gt (Var 'n') (ConstInt 1)) [Asgn 'n' (Bin Minus (Var 'n') (ConstInt 1))],
->     InvokePrcdr "method" [ ('x', Bool True), ('s', Int 555)],
->     Asgn 'a' (Var 'n')
+>     Asgn 'h' (Una Not (Var 'i')),
+>     Asgn 'i' (Var 'h'),
+>     Declare 'u' IntType,
+>     AsgnArrRef 'o' (ConstInt 0) (Bin Times (ArrRef 'o' (ConstInt 2)) (ConstInt 10)),
+>     Skip,
+>     If (Bin And (Var 'h') (Var 'i')) [Asgn 'a' (ConstInt 5)] [Asgn 'a' (ConstInt 0)],
+>     Do (Bin Gt (Var 'b') (ConstInt 1)) [Asgn 'b' (Bin Minus (Var 'b') (ConstInt 1))],
+>     Asgn 'u' (Var 'b'),
+>     InvokePrcdr "winwin" [('h', Bool True), ('v', Int 555)]
 >   ])
 
+If everything is right, after the execution, the store should be:
 
------------------------------------------------------
-                     Test cases
------------------------------------------------------
+    // int variables
+    int a = 5;
+    int b = 1;
+    int c = 3;
+    int u = 1;
+
+    // boolean variables
+    boolean h = true;
+    boolean i = true;
+
+    // a one dimension array of int
+    int[] o = new int[4] { 20, 1, 256, 3 };
+
+    // the two dimension array is not changed, array of array of boolean
+    boolean[][] p = {
+        { true },
+        { false, true },
+        { true, false, true },
+    }
+
+
+And let there be test cases:
+
+
+
 
 
 I don't know how to assert on a expected error thrown in Haskel, so for `run`
