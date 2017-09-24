@@ -77,6 +77,15 @@ Discussion points:
   `ArrRef (ArrRef (Var 'x') (Int 0)) (Int 0)`. If I had more time, this would
   be where I'm heading.
 
+- Procedures:
+  Procedure is not difficult to implement. The hard part lives in how to do
+  static checks after we introduced procedures. Procedures can invoke procedures,
+  and this will lead to infinite loops if we don't track visited procedures.
+  The general idea is to treat procedure invocation as a block execution with
+  parameters as local variables in a new scope, and track the visited procedures
+  when we do static checkings. It's a lot more code refactoring than this quick
+  explanation here.
+
 - Implementation of scopes:
   Scopes are stored as a stack from bottom up. The execution is always in the
   top-most scope. Every time the execution enters a new block, a new scope is
