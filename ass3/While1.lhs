@@ -1,3 +1,24 @@
+-----------------------------------------------------
+                 General discussion
+-----------------------------------------------------
+
+To dear marker: I strongly suggest skipping While1.lhs and While2.lhs and go
+straight to While3.lhs for marking, if that does not violat any marking rules.
+Discussions, more refined comments, test cases are all in While3.lhs. I didn't
+get time to polish While1.lhs and While2.lhs, plus it's really tedious to do so.
+
+I implemented 3 parts in order, and managed to keep the back-compatibility, so
+While3.lhs contains every requirement from part 1 and 2. The implementation of
+part 3 is greatly refactored and hence quite different from part 1 and 2 as well.
+
+I also provided a detailed list of what I did and what I didn't do in
+While3.lhs.
+
+If needed, While1.lhs is always here for reviewing.
+
+-----------------------------------------------------
+-----------------------------------------------------
+
 Initial code for COMP304 Assignment 3, 2017.
 
 Author: Lindsay Groves, VUW, 2017.
@@ -498,7 +519,6 @@ My test:
 >        ('n', IntType)
 >      ]
 
-
 > p9 :: Prog
 > p9 = (
 >   t9,
@@ -507,8 +527,3 @@ My test:
 >     Asgn 'y' (Var 'x'),
 >     If (Bin And (Var 'x') (Var 'y')) (t9, [Asgn 'm' (Const (Int 5))]) (t9, [Asgn 'n' (Const (Int 0))])
 >   ])
-
-
------------------------------------------------------
-                     Test cases
------------------------------------------------------
