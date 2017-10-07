@@ -25,7 +25,7 @@ Then define it as Applicative Functor.
 ==============================================
 
 
-1.  Why this approach?
+1. Why this approach?
 - to implement ZipList as an Applicative instance, we need to implement two
 functions: `(<*>)` and `pure`.
 
