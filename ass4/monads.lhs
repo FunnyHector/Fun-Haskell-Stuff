@@ -7,6 +7,7 @@
 
 
 > import Control.Monad
+> import Control.Monad.State
 
 Type declaration:
 
@@ -154,6 +155,7 @@ Unlock a locked box. Will raise error if the box passed in is already unlocked.
             Question 3 Discussion
 ==============================================
 
+
 1. Why did you decide on the implementations you did?
 
 - LockableBox as Monad is like Either Monad, if we treat LockedBox as the Left
@@ -177,30 +179,27 @@ all the laws. I chose `(LockedBox f) <*> (LockedBox _) = LockedBox f`.
 box that wasn't a monad be different?
 
 - The `lock` and `unlock` function have some difficulties, because Haskell has
-very strict type constraints. I believe this has nothing to do with being a
-Monad or being a Functor. LockableBox being a Functor is the root cause, because
-in order to properly apply `fmap` on LockableBox, we have to use two type
-variables `a` and `b` for LockedBox and UnlockedBox.
+very strict type mechanism. I believe this has nothing to do with being a Monad
+or being a Functor. LockableBox being a Functor is the root cause, because in
+order to properly apply `fmap` on LockableBox, we have to use two type variables
+`a` and `b` for LockedBox and UnlockedBox.
 
 When we do `lock (UnlockedBox x)`, the type of `UnlockedBox x` is
 `LockableBox a b`, where `b` is the type of `x`. At this point there is a hidden
 type `a`, which we/Haskell compiler can never know what actual type it is. But
-we don't care type `a`, because we want to return `LockedBox x`, which has type
-`LockableBox b b`. This is pretty straightforward. The tricky part comes when we
-do `lock (LockedBox x)`. The type of `LockedBox x` is `LockableBox a b`, where
-`a` is the type of `x`. This time `b` is the hidden type which we/compiler can
-never figure out, and we need to return something with type `LockableBox b b`.
-The easiest approach here is simply raise an error to disallow locking a
-LockedBox, which is not that ideal, but works fine with Haskell type mechanism.
+we don't care about type `a`, because what we want to return is `LockedBox x`,
+which has type `LockableBox b b`. This is pretty straightforward. The tricky
+part comes when we do `lock (LockedBox x)`. The type of `LockedBox x` is
+`LockableBox a b`, where `a` is the type of `x`. This time `b` is the hidden
+type which we/compiler can never figure out, and we need to return something
+with type `LockableBox b b`. Dead end. The easiest way out here is to simply
+raise an error to disallow locking a LockedBox, which is not that ideal, but
+works fine with Haskell type mechanism.
 
 What happens when we `unlock` a LockableBox is pretty much the same with when we
 `lock` it.
 
-
-
-
-
-Consider an alternative version of LockableBox, which is not a Functor:
+Now consider an alternative version of LockableBox, which is not a Functor:
 
   data LockableBox a = LockedBox a | UnlockedBox a deriving (Show, Eq)
 
@@ -214,9 +213,6 @@ Consider an alternative version of LockableBox, which is not a Functor:
 
 Implementing `lock` and `unlock` is much easier and more intuitive. However, we
 lose all convenience of Functor/Applicative/Monad.
-
-
-
 
 
 ==============================================
@@ -337,3 +333,87 @@ One test to test them all!
 >                test_q3_fmap, test_q3_star, test_q3_bind, test_q3_functorLaws,
 >                test_q3_applicativeLaws, test_q3_monadLaws
 >              ]
+
+
+==============================================
+              Question 4 Code
+==============================================
+
+
+> pop :: State [Int] Int
+> pop = state $ \(x : xs) -> (x, xs)
+
+> push :: Int -> State [Int] ()
+> push a = state $ \xs -> ((), a : xs)
+
+
+
+
+
+
+
+
+
+must use `state` to define `dup` and `swap`
+
+> -- dup :: State [Int] ()
+
+
+> -- swap :: State [Int] ()
+
+
+
+example programme:
+
+flip runState [] $ do
+  push 3
+  push 5
+  push 7
+  swap
+  pop
+  dup
+
+result: ((), [7, 7, 3])
+
+
+
+
+
+
+
+
+
+
+
+==============================================
+            Question 4 Discussion
+==============================================
+
+
+1. A style of programming based on implicit stack manipulation like this is
+often called concatenative, because two programs can be concatenated to have the
+result of one used as the input to the next. Discuss how your system does or
+does not behave in this way.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+==============================================
+            Question 4 Test Cases
+==============================================
