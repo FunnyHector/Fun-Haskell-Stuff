@@ -125,18 +125,15 @@ To be a Monad, LockableBox must be a Functor first.
 LockableBox also must be an Applicative Functor.
 
 > instance Applicative (LockableBox a) where
->   pure = UnlockedBox
-
->   (UnlockedBox f) <*> (UnlockedBox x) = UnlockedBox (f x)
->   (UnlockedBox _) <*> (LockedBox x)   = LockedBox x
->   (LockedBox f)   <*> (UnlockedBox _) = LockedBox f
->   (LockedBox f)   <*> (LockedBox _)   = LockedBox f
+>   pure                = UnlockedBox
+>   LockedBox   f <*> _ = LockedBox f
+>   UnlockedBox f <*> v = fmap f v
 
 Now LockableBox is ready to be a Monad.
 
 > instance Monad (LockableBox a) where
->   (UnlockedBox x) >>= f = f x
->   (LockedBox x)   >>= _ = LockedBox x
+>   LockedBox   x >>= _ = LockedBox x
+>   UnlockedBox x >>= f = f x
 
 lock:
 Lock an unlocked box. Will raise error if the box passed in is already locked.
@@ -159,14 +156,64 @@ Unlock a locked box. Will raise error if the box passed in is already unlocked.
 
 1. Why did you decide on the implementations you did?
 
+- LockableBox as Monad is like Either Monad, if we treat LockedBox as the Left
+case. What's more than Left of Either is, the "failure" (LockedBox) can be
+recovered/brought back to UnlockedBox.
 
+So my implementation looks like how Either Monad is implemented a lot. Generally
+speaking, as can be seen from code part above, we can simply apply `fmap`,
+`(<*>)`, `(>>=)` on UnlockedBox like normal box from question 1; but if we try
+to do anything to a LockedBox, all we get out at the end is that LockedBox.
 
+Test cases are provided to validate that my implementation satisfies Monad laws,
+Applicative Functor laws, and Functor laws.
 
+There is one arguable implementation: should `(LockedBox f) <*> (LockedBox x)`
+return `LockedBox f` or `LockedBox x`? In my opinion, both approaches satisfy
+all the laws. I chose `(LockedBox f) <*> (LockedBox _) = LockedBox f`.
 
 
 2. The lock and unlock functions have some difficulties. Why? Could a lockable
 box that wasn't a monad be different?
 
+- The `lock` and `unlock` function have some difficulties, because Haskell has
+very strict type constraints. I believe this has nothing to do with being a
+Monad or being a Functor. LockableBox being a Functor is the root cause, because
+in order to properly apply `fmap` on LockableBox, we have to use two type
+variables `a` and `b` for LockedBox and UnlockedBox.
+
+When we do `lock (UnlockedBox x)`, the type of `UnlockedBox x` is
+`LockableBox a b`, where `b` is the type of `x`. At this point there is a hidden
+type `a`, which we/Haskell compiler can never know what actual type it is. But
+we don't care type `a`, because we want to return `LockedBox x`, which has type
+`LockableBox b b`. This is pretty straightforward. The tricky part comes when we
+do `lock (LockedBox x)`. The type of `LockedBox x` is `LockableBox a b`, where
+`a` is the type of `x`. This time `b` is the hidden type which we/compiler can
+never figure out, and we need to return something with type `LockableBox b b`.
+The easiest approach here is simply raise an error to disallow locking a
+LockedBox, which is not that ideal, but works fine with Haskell type mechanism.
+
+What happens when we `unlock` a LockableBox is pretty much the same with when we
+`lock` it.
+
+
+
+
+
+Consider an alternative version of LockableBox, which is not a Functor:
+
+  data LockableBox a = LockedBox a | UnlockedBox a deriving (Show, Eq)
+
+  lock :: LockableBox a -> LockableBox a
+  lock (LockedBox x)   = LockedBox x
+  lock (UnlockedBox x) = LockedBox x
+
+  unlock :: LockableBox a -> LockableBox a
+  unlock (LockedBox x)   = UnlockedBox x
+  unlock (UnlockedBox x) = UnlockedBox x
+
+Implementing `lock` and `unlock` is much easier and more intuitive. However, we
+lose all convenience of Functor/Applicative/Monad.
 
 
 
@@ -245,8 +292,6 @@ To test that LockableBox obeys all Applicative Functor laws.
 >         t02 = (pure id <*> lockedBox) == lockedBox
 >         t03 = ((UnlockedBox (*2) <*> pure 5) :: LockableBox Int Int) == ((pure ($ 5) <*> UnlockedBox (*2)) :: LockableBox Int Int)
 >      -- t04 = (LockedBox (*2) <*> pure 5) == (pure ($ 5) <*> LockedBox (*2))
->      --   t05 = ((pure (.) <*> UnlockedBox (*2) <*> UnlockedBox (+5) <*> UnlockedBox 5) :: LockableBox Int Int)
->      --           == ((UnlockedBox (*2) <*> (UnlockedBox (+5) <*> UnlockedBox 5)) :: LockableBox Int Int)
 >         t05 = (pure (.) <*> UnlockedBox (*2) <*> UnlockedBox (+5) <*> unlockedBox)   == (UnlockedBox (*2) <*> (UnlockedBox (+5) <*> unlockedBox))
 >         t06 = (pure (.) <*> UnlockedBox (*2) <*> UnlockedBox (+5) <*> LockedBox 5)   == (UnlockedBox (*2) <*> (UnlockedBox (+5) <*> LockedBox 5))
 >      -- t07 = (pure (.) <*> UnlockedBox (*2) <*> LockedBox (+5)   <*> UnlockedBox 5) == (UnlockedBox (*2) <*> (LockedBox (+5)   <*> UnlockedBox 5))

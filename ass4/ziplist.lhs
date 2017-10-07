@@ -26,6 +26,7 @@ Then define it as Applicative Functor.
 
 
 1. Why this approach?
+
 - to implement ZipList as an Applicative instance, we need to implement two
 functions: `(<*>)` and `pure`.
 
@@ -106,7 +107,7 @@ correct implemetation.
 
 2. why ZipList is not suitable as a Monad?
 
-If we want to make a Monad ZipList instance, we'll have to build it on top of
+- If we want to make a Monad ZipList instance, we'll have to build it on top of
 current definition of Applicative ZipList, which means:
 
     return x = pure x = ZipList (repeat x)
