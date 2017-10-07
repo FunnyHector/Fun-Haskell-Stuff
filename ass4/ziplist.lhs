@@ -1,13 +1,12 @@
 ==============================================
-                     Code
+              Question 2 Code
 ==============================================
-
 
 > module ZipList where
 
 Type declaration:
 
-> newtype ZipList a = ZipList { getZipList :: [a] } deriving (Show)
+> newtype ZipList a = ZipList { getZipList :: [a] } deriving (Show, Eq)
 
 First define ZipList as a Functor.
 
@@ -22,7 +21,7 @@ Then define it as Applicative Functor.
 
 
 ==============================================
-                   Discussion
+            Question 2 Discussion
 ==============================================
 
 
@@ -132,3 +131,55 @@ So while the conclusion is clear that ZipList is not suitable as a monad, the
 reason, I guess, is that when we build ZipList as Applicative Functor, we have
 to make `pure` function to return an infinite list to deal with two lists with
 different size, which makes (>>=) impossible to be implemented.
+
+
+==============================================
+            Question 2 Test Cases
+==============================================
+
+
+test_q2_fmap:
+To test that `fmap` works as expected.
+
+> test_q2_fmap :: Bool
+> test_q2_fmap = all (== True) [t1, t2, t3]
+>   where t1  = fmap (*2) (ZipList [1,2,3,4,5,6]) == ZipList [2,4,6,8,10,12]
+>         t2  = fmap f (ZipList [10,2,30]) == ZipList [True,False,True]
+>         t3  = fmap ((*2) . (+5)) (ZipList [1,2,3,4,5,6]) == ZipList [12,14,16,18,20,22]
+>         f x = length (show x) > 1
+
+test_q2_star:
+To test that `(<*>)` works as expected
+
+> test_q2_star :: Bool
+> test_q2_star = all (== True) [t1, t2, t3]
+>   where t1 = (ZipList [(*2), (+5), div 10] <*> ZipList [1,2,3]) == ZipList [2,7,3]
+>         t2 = (ZipList [(*2), (+5)] <*> ZipList [1,2,3,4]) == ZipList [2,7]
+>         t3 = ((*) <$> ZipList [1,2,3] <*> ZipList [1,2,3]) == ZipList [1,4,9]
+
+test_q2_functorLaws:
+To test that ZipList obeys Functor laws.
+
+> test_q2_functorLaws :: Bool
+> test_q2_functorLaws = all (== True) [t1, t2]
+>   where t1 = fmap id (ZipList [1,2,3]) == id (ZipList [1,2,3])
+>         t2 = fmap ((*2) . (+5)) (ZipList [1,2,3]) == (fmap (*2) . fmap (+5)) (ZipList [1,2,3])
+
+test_q2_applicativeLaws:
+To test that ZipList obeys Applicative Functor laws.
+
+> test_q2_applicativeLaws :: Bool
+> test_q2_applicativeLaws = all (== True) [t1, t2, t3]
+>   where t1 = (pure id <*> ZipList [1,2,3]) == ZipList [1,2,3]
+>         t2 = (ZipList [(*2), (+5), div 10] <*> pure 5) == (pure ($ 5) <*> ZipList [(*2), (+5), div 10])
+>         t3 = (pure (.) <*> ZipList [(+2)] <*> ZipList [(*5), (*2)] <*> ZipList [1,2,3]) == (ZipList [(+2)] <*> (ZipList [(*5), (*2)] <*> ZipList [1,2,3]))
+
+
+theTest_q2:
+One test to test them all!
+
+> theTest_q2 :: Bool
+> theTest_q2 = all (== True) [
+>                test_q2_fmap, test_q2_star, test_q2_functorLaws,
+>                test_q2_applicativeLaws
+>              ]
