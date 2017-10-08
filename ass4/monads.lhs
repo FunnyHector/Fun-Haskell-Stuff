@@ -86,8 +86,7 @@ To test that Box obeys Applicative Functor laws.
 >         t3 = (pure (.) <*> Box (*2) <*> Box (+5) <*> Box 5) == (Box (*2) <*> (Box (+5) <*> Box 5))
 
 test_q1_monadLaws:
-To test that Box obeys Monad laws (though test1 is using a general monad
-instead of Box monad).
+To test that Box obeys Monad laws.
 
 > test_q1_monadLaws :: Bool
 > test_q1_monadLaws = all (== True) [t1, t2, t3]
@@ -298,8 +297,7 @@ To test that LockableBox obeys all Applicative Functor laws.
 >      -- t12 = (pure (.) <*> LockedBox (*2)   <*> LockedBox (+5)   <*> LockedBox 5)   == (LockedBox (*2)   <*> (LockedBox (+5)   <*> LockedBox 5))
 
 test_q3_monadLaws:
-To test that LockableBox obeys Monad laws (though test1 is using a general monad
-instead of LockableBox monad).
+To test that LockableBox obeys Monad laws.
 
 > test_q3_monadLaws :: Bool
 > test_q3_monadLaws = all (== True) [t1, t2, t3, t4, t5, t6]
@@ -340,49 +338,42 @@ One test to test them all!
 ==============================================
 
 
-> pop :: State [Int] Int
+A type synonym. READABILITY BABE!
+
+> type Stack = [Int]
+
+pop:
+Pop out the element on top of the stack.
+
+> pop :: State Stack Int
 > pop = state $ \(x : xs) -> (x, xs)
 
-> push :: Int -> State [Int] ()
+push:
+Push a new element on top of the stack
+
+> push :: Int -> State Stack ()
 > push a = state $ \xs -> ((), a : xs)
 
+dup:
+Duplicate the element on top of the stack, and return `()` with the new state.
+If the stack is empty, then return `()` and the same state (do nothing).
 
+> dup :: State Stack ()
+> dup = state $ \s ->
+>   case () of
+>     _ | not $ null s -> let (x : _) = s in ((), x : s)
+>       | otherwise    -> ((), s)
 
+swap:
+Swap top two elements of the stack, and return `()` with the new state. If the
+stack contains only one or zero element, then return `()` and the same state
+(do nothing).
 
-
-
-
-
-
-must use `state` to define `dup` and `swap`
-
-> -- dup :: State [Int] ()
-
-
-> -- swap :: State [Int] ()
-
-
-
-example programme:
-
-flip runState [] $ do
-  push 3
-  push 5
-  push 7
-  swap
-  pop
-  dup
-
-result: ((), [7, 7, 3])
-
-
-
-
-
-
-
-
-
+> swap :: State Stack ()
+> swap = state $ \s ->
+>   case () of
+>     _ | length s > 1 -> let (x : y : rest) = s in ((), y : x : rest)
+>       | otherwise    -> ((), s)
 
 
 ==============================================
@@ -390,30 +381,81 @@ result: ((), [7, 7, 3])
 ==============================================
 
 
-1. A style of programming based on implicit stack manipulation like this is
+1. Should it explode or do nothing when `dup`/`swap` is not applicable?
+
+- `dup` is not applicable when the size of the stack is 0, and `swap` is not
+applicable when the size is 0 or 1. I'm not a fan of explosions. I think doing
+nothing when it's not applicable makes sense here.
+
+2. A style of programming based on implicit stack manipulation like this is
 often called concatenative, because two programs can be concatenated to have the
 result of one used as the input to the next. Discuss how your system does or
 does not behave in this way.
 
+- This Stack system does behave as concatenative programming. Four existing
+functions, `push`, `pop`, `dup`, and `swap`, all return a State Monad (in this
+case "State Stack"), and Monad is very good at chaining with each other /
+concatenatively programming. If we look closely to the following example:
 
+    flip runState [] $ do
+      push 3
+      push 5
+      push 7
+      swap
+      pop
+      dup
 
+and transform the do notation to monadic binding style:
 
+      push 3 >>
+      push 5 >>
+      push 7 >>
+      swap >>
+      pop >>= \_ ->
+      dup
 
+We can see that they chain perfectly. The function bind `(>>=)` (and the
+ignoring bind `(>>)` as well) allows function to use the Monadic value returned
+from previous function, so the function flow is like:
 
+    Monad m =>
+    m a -> \a -> m b >>= \b -> m c >>= \c -> m d >>= ...
 
+The chain can go as long as we need, and we can easily swap functions because
+they all return the same type of Monad State.
 
-
-
-
-
-
-
-
-
-
-
+The do notation enables us to care more about what functions do, and (sort of)
+screen out the monadic context, so we can write imperative-looking programmes as
+the example demonstrates.
 
 
 ==============================================
             Question 4 Test Cases
 ==============================================
+
+
+test_dup:
+Simply test the behaviour of dup. Covers both paths of the function.
+
+> test_dup :: Bool
+> test_dup = all (== True) [t1, t2, t3, t4]
+>   where t1 = runState dup [] == ((),[])
+>         t2 = runState dup [1] == ((),[1, 1])
+>         t3 = runState (do push 1; push 2; dup; push 3) [] == ((),[3, 2, 2, 1])
+>         t4 = runState (do push 1; pop; dup; push 3) [] == ((),[3])
+
+test_swap:
+Simply test the behaviour of swap. Covers both paths of the function.
+
+> test_swap :: Bool
+> test_swap = all (== True) [t1, t2, t3, t4]
+>   where t1 = runState swap [] == ((),[])
+>         t2 = runState swap [1] == ((),[1])
+>         t3 = runState (do push 1; push 2; swap; push 3) [] == ((),[3, 1, 2])
+>         t4 = runState (do push 1; swap; push 2; swap; push 3; swap) [] == ((),[1, 3, 2])
+
+theTest_q4:
+One test to test them all!
+
+> theTest_q4 :: Bool
+> theTest_q4 = all (== True) [test_dup, test_swap]
