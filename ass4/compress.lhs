@@ -1,10 +1,15 @@
-> module Compress where
+Name:              Fang Zhao (300364061)
+Course Number:     COMP304
+Assignment Number: 4
+Question Number:   5
 
 
 ==============================================
               Question 5 Code
 ==============================================
 
+
+> module Compress where
 
 > import qualified Data.Map as Map
 > import Control.Monad.State

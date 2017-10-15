@@ -1,3 +1,9 @@
+Name:              Fang Zhao (300364061)
+Course Number:     COMP304
+Assignment Number: 4
+Question Number:   2
+
+
 ==============================================
               Question 2 Code
 ==============================================

@@ -1,3 +1,8 @@
+Name:              Fang Zhao (300364061)
+Course Number:     COMP304
+Assignment Number: 4
+Question Number:   1, 3, & 4
+
 > module Box where
 
 
