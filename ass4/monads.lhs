@@ -366,8 +366,8 @@ If the stack is empty, then return `()` and the same state (do nothing).
 > dup :: State Stack ()
 > dup = state $ \s ->
 >   case () of
->     _ | not $ null s -> let (x : _) = s in ((), x : s)
->       | otherwise    -> ((), s)
+>     _ | null s    -> ((), s)
+>       | otherwise -> ((), head s : s)
 
 swap:
 Swap top two elements of the stack, and return `()` with the new state. If the
@@ -416,7 +416,7 @@ and transform the do notation to monadic binding style:
       push 5 >>
       push 7 >>
       swap >>
-      pop >>= \_ ->
+      pop >>
       dup
 
 We can see that they chain perfectly. The function bind `(>>=)` (and the
@@ -429,7 +429,7 @@ from previous function, so the function flow is like:
 The chain can go as long as we need, and we can easily swap functions because
 they all return the same type of Monad State.
 
-The do notation enables us to care more about what functions do, and (sort of)
+The do notation enables us to care more about what functions do, and (kind of)
 screen out the monadic context, so we can write imperative-looking programmes as
 the example demonstrates.
 

@@ -371,8 +371,8 @@ database. So I'll hold on my argument here.
 >   | otherwise                  = nameToPerson name ps
 
 delPerson:
-Delete and return the person with matched name (as a Just). If there is no
-record found, an error will be thrown from `getPerson` function.
+Delete and return the person with matched name. If there is no record found, an
+error will be thrown from `getPerson` function.
 
 > delPerson :: String -> State Monarchs Person
 > delPerson name = do
@@ -383,7 +383,7 @@ record found, an error will be thrown from `getPerson` function.
 
 setAttribute:
 Set the given attribute to anyone who has the given name. If this name doesn't
-belong to anybody in our database, then do nothing.
+belong to anybody in our database, then an error will be raised.
 
 > setAttribute :: Name -> Attribute -> State Monarchs ()
 > setAttribute name attr = do
@@ -412,7 +412,7 @@ don't sound very suitable. List is for nondeterministic or branching-out values,
 again, not very suitable for a family tree DSL. IO is not involved so IO Monad
 is not an option. Writer could be it, but I guess in order to use Writer we have
 to write many extra functions to manipulate the logs first. State is just an
-intuitive option for this task.
+intuitive choice for this task.
 
 2. Is there a better way this language could be designed? What is it? Why?
 
@@ -645,7 +645,7 @@ It's not used for testing, but it's useful to observe all the results and verify
 against an actual table or family tree of these mornachs.
 
 > showAll :: (Name -> t) -> [(Name, t)]
-> showAll func = map ((\name -> (name, ($) func name)) . getName) allPeople
+> showAll func = map ((\name -> (name, func name)) . getName) allPeople
 
 
 test_parents:
